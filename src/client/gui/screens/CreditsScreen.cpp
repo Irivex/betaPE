@@ -44,7 +44,7 @@ void CreditsScreen::init() {
 	_lines.push_back("fileshredder");
     _lines.push_back("");
     // avoid color tags around the URL so it isn't mangled by the parser please
-    _lines.push_back("Join our Discord server: https://discord.gg/c58YesBxve");
+    _lines.push_back("discord server ded sadly");
     _scrollSpeed = 0.5f;
     _scrollY = height; // start below screen
 }
