@@ -102,7 +102,7 @@ endif()
 CPMAddPackage(
     NAME "openal"
     GIT_REPOSITORY "https://github.com/kcat/openal-soft.git"
-    GIT_TAG "1.25.1"
+    GIT_TAG "1.24.3"
     OPTIONS
         "ALSOFT_EXAMPLES OFF"
         "ALSOFT_TESTS OFF"
