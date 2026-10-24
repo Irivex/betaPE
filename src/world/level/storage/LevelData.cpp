@@ -4,7 +4,6 @@ LevelData::LevelData()
 :	xSpawn(128),
 	ySpawn(64),
 	zSpawn(128),
-
 	seed(0),
 	lastPlayed(0),
 	generatorVersion(SharedConstants::GeneratorVersion),
@@ -12,16 +11,20 @@ LevelData::LevelData()
 	dimension(Dimension::NORMAL),
 	playerDataVersion(-1),
 	storageVersion(0),
-	gameType(GameType::Default),	spawnMobs(false),
-	allowCheats(false),	loadedPlayerTag(NULL)
+	gameType(GameType::Default),
+	spawnMobs(false),
+	allowCheats(false),
+	loadedPlayerTag(NULL),
+	worldSize(256) // Default fallback size
 {
-	//LOGI("ctor 1: %p\n", this);
 	spawnMobs = (gameType == GameType::Survival);
 }
 
 LevelData::LevelData( const LevelSettings& settings, const std::string& levelName, int generatorVersion /*= -1*/ )
 :	seed(settings.getSeed()),
-	gameType(settings.getGameType()),	allowCheats(settings.getAllowCheats()),	levelName(levelName),
+	gameType(settings.getGameType()),
+	allowCheats(settings.getAllowCheats()),
+	levelName(levelName),
 	xSpawn(128),
 	ySpawn(64),
 	zSpawn(128),
@@ -29,22 +32,14 @@ LevelData::LevelData( const LevelSettings& settings, const std::string& levelNam
 	time(0),
 	dimension(Dimension::NORMAL),
 	playerDataVersion(-1),
-	loadedPlayerTag(NULL)
+	loadedPlayerTag(NULL),
+	worldSize(settings.getWorldSize()) // Copy worldSize from LevelSettings
 {
-	//LOGI("ctor 2: %p\n", this);
-
 	if (generatorVersion < 0)
 		generatorVersion = SharedConstants::GeneratorVersion;
 
 	this->generatorVersion = generatorVersion;
 	spawnMobs = (gameType == GameType::Survival);
-}
-
-LevelData::LevelData( CompoundTag* tag )
-:	loadedPlayerTag(NULL)
-{
-	//LOGI("ctor 3: %p (%p)\n", this, tag);
-	getTagData(tag);
 }
 
 LevelData::LevelData( const LevelData& rhs )
@@ -63,16 +58,14 @@ LevelData::LevelData( const LevelData& rhs )
 	spawnMobs(rhs.spawnMobs),
 	allowCheats(rhs.allowCheats),
 	loadedPlayerTag(NULL),
-	playerData(rhs.playerData)
+	playerData(rhs.playerData),
+	worldSize(rhs.worldSize)
 {
-	//LOGI("c-ctor: %p (%p)\n", this, &rhs);
 	setPlayerTag(rhs.loadedPlayerTag);
-	//PlayerData playerData;
 }
 
 LevelData& LevelData::operator=( const LevelData& rhs )
 {
-	//LOGI("as-op: %p (%p)\n", this, &rhs);
 	if (this != &rhs) {
 		seed		= rhs.seed;
 		gameType	= rhs.gameType;
@@ -89,6 +82,7 @@ LevelData& LevelData::operator=( const LevelData& rhs )
 		playerDataVersion	= rhs.playerDataVersion;
 		generatorVersion	= rhs.generatorVersion;
 		storageVersion		= rhs.storageVersion;
+		worldSize			= rhs.worldSize;
 		setPlayerTag(rhs.loadedPlayerTag);
 	}
 
@@ -157,7 +151,7 @@ CompoundTag* LevelData::createTag( const std::vector<Player*>& players )
 	return tag;
 }
 
-void LevelData::setTagData( CompoundTag* tag, CompoundTag* playerTag )
+void LevelData::setTagData(CompoundTag* tag, CompoundTag* playerTag)
 {
 	if (!tag) return;
 	tag->putLong("RandomSeed", seed);
@@ -172,13 +166,14 @@ void LevelData::setTagData( CompoundTag* tag, CompoundTag* playerTag )
 	tag->putString("LevelName", levelName);
 	tag->putInt("StorageVersion", storageVersion);
 	tag->putInt("Platform", 2);
+	tag->putInt("worldSize", worldSize); // Save worldSize to disk
 
 	if (playerTag != NULL) {
 		tag->putCompound("Player", playerTag);
 	}
 }
 
-void LevelData::getTagData( const CompoundTag* tag )
+void LevelData::getTagData(const CompoundTag* tag)
 {
 	if (!tag) return;
 	seed = (long)tag->getLong("RandomSeed");
@@ -193,12 +188,18 @@ void LevelData::getTagData( const CompoundTag* tag )
 	levelName = tag->getString("LevelName");
 	storageVersion = tag->getInt("StorageVersion");
 
+	// Read worldSize from disk; default to 256 for older save files
+	if (tag->contains("worldSize")) {
+		worldSize = tag->getInt("worldSize");
+	}
+	else {
+		worldSize = 256;
+	}
+
 	spawnMobs = (gameType == GameType::Survival);
 
 	if (tag->contains("Player", Tag::TAG_Compound)) {
 		setPlayerTag(tag->getCompound("Player"));
-
-		//dimension = loadedPlayerTag.getInt("Dimension");
 	}
 }
 
@@ -334,6 +335,16 @@ void LevelData::setGeneratorVersion( int version )
 long LevelData::getLastPlayed() const
 {
 	return lastPlayed;
+}
+
+int LevelData::getWorldSize() const
+{
+	return worldSize > 0 ? worldSize : 256;
+}
+
+void LevelData::setWorldSize(int size)
+{
+	this->worldSize = size;
 }
 
 int LevelData::getStorageVersion() const

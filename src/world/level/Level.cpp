@@ -85,9 +85,6 @@ Level::~Level() {
 
 void Level::_init(const std::string& levelName, const LevelSettings& settings, int generatorVersion, Dimension* fixedDimension) {
 
-	// Ensure the correct world size is applied whenever a level (new or loaded) initializes
-	LevelConstants::setWorldSize(settings.getWorldSize());
-
 	isGeneratingTerrain = false;
 
 	LevelData* preparedData = levelStorage->prepareLevel(this);
@@ -95,15 +92,20 @@ void Level::_init(const std::string& levelName, const LevelSettings& settings, i
 
 	if (preparedData == NULL) {
 		levelData = LevelData(settings, levelName, generatorVersion);
-	} else {
+	}
+	else {
 		levelData = *preparedData;
 		levelData.setLevelName(levelName);
 	}
 
+	// Apply the loaded/created world size to global LevelConstants
+	LevelConstants::setWorldSize(levelData.getWorldSize());
+
 	if (fixedDimension != NULL) {
 		dimension = fixedDimension;
-	} else {
-		dimension = DimensionFactory::createDefaultDimension( &levelData );
+	}
+	else {
+		dimension = DimensionFactory::createDefaultDimension(&levelData);
 	}
 
 	dimension->init(this);

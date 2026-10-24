@@ -78,9 +78,12 @@ public:
 public:
 	PlayerData playerData;
 	int playerDataVersion;
+	int  getWorldSize() const;
+	void setWorldSize(int size);
 	std::string levelName;
 private:
 	long seed;
+	int worldSize;
 	int xSpawn;
 	int ySpawn;
 	int zSpawn;
