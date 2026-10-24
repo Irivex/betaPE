@@ -15,7 +15,7 @@
 
 const float RandomLevelSource::SNOW_CUTOFF = 0.5f;
 const float RandomLevelSource::SNOW_SCALE = 0.3f;
-static const int MAX_BUFFER_SIZE = 1024;
+static const int MAX_BUFFER_SIZE = 3024;
 
 RandomLevelSource::RandomLevelSource(Level* level, long seed, int version, bool spawnMobs)
 	:	random(seed),

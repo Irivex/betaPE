@@ -85,6 +85,9 @@ Level::~Level() {
 
 void Level::_init(const std::string& levelName, const LevelSettings& settings, int generatorVersion, Dimension* fixedDimension) {
 
+	// Ensure the correct world size is applied whenever a level (new or loaded) initializes
+	LevelConstants::setWorldSize(settings.getWorldSize());
+
 	isGeneratingTerrain = false;
 
 	LevelData* preparedData = levelStorage->prepareLevel(this);
@@ -427,7 +430,7 @@ bool Level::findPath(Path* path, Entity* from, int xBest, int yBest, int zBest, 
 /**
 * Sets the initial spawn, created this method so we could do a special
 * location for the demo version.
-*/
+*/int ySpawn = 64;
 /*protected*/
 void Level::setInitialSpawn() {
     isFindingSpawn = true;

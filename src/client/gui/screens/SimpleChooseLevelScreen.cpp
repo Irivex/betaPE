@@ -9,17 +9,21 @@
 #include "../../../platform/input/Keyboard.h"
 #include "../../../platform/log.h"
 #include <locale/I18n.h>
+#include "../../../world/level/LevelSettings.h"
+#include "../../../world/level/LevelConstants.h"
 
 SimpleChooseLevelScreen::SimpleChooseLevelScreen(const std::string& levelName)
-:   bHeader(nullptr),
+    : bHeader(nullptr),
     bGamemode(nullptr),
     bCheats(nullptr),
+    bSize(nullptr),
     bBack(nullptr),
     bCreate(nullptr),
     levelName(levelName),
     hasChosen(false),
     gamemode(GameType::Survival),
     cheatsEnabled(false),
+    worldSizeIndex(1),
     tLevelName(0, "World name"),
     tSeed(1, "World seed")
 {
@@ -31,6 +35,7 @@ SimpleChooseLevelScreen::~SimpleChooseLevelScreen()
     delete bGamemode;
     delete bCheats;
     delete bBack;
+    delete bSize;
     delete bCreate;
 }
 
@@ -59,22 +64,27 @@ void SimpleChooseLevelScreen::init()
     }
     if (minecraft->options.getIntValue(OPTIONS_MENU_STYLE) != 2) {
         bGamemode = new Touch::TButton(1, I18n::get("selectWorld.gameMode.survival"));
-        bCheats  = new Touch::TButton(4, "Cheats: Off");
-        bCreate  = new Touch::TButton(3, I18n::get("selectWorld.create"));
-    } else {
+        bCheats = new Touch::TButton(4, "Cheats: Off");
+        bSize = new Touch::TButton(5, "Size: 512x");
+        bCreate = new Touch::TButton(3, I18n::get("selectWorld.create"));
+    }
+    else {
         bGamemode = new Button(1, I18n::get("selectWorld.gameMode.survival"));
-        bCheats  = new Button(4, "Cheats: Off");
-        bCreate  = new Button(3, I18n::get("Create"));
+        bCheats = new Button(4, "Cheats: Off");
+        bSize = new Button(5, "Size: 512x");
+        bCreate = new Button(3, I18n::get("Create"));
     }
 
     buttons.push_back(bHeader);
     buttons.push_back(bBack);
     buttons.push_back(bGamemode);
     buttons.push_back(bCheats);
+    buttons.push_back(bSize);
     buttons.push_back(bCreate);
 
     tabButtons.push_back(bGamemode);
     tabButtons.push_back(bCheats);
+    tabButtons.push_back(bSize);
     tabButtons.push_back(bBack);
     tabButtons.push_back(bCreate);
 
@@ -109,26 +119,29 @@ void SimpleChooseLevelScreen::setupPositions()
     tSeed.x = tLevelName.x;
     tSeed.y = tLevelName.y + 30;
 
-    const int buttonWidth = 120;
-    const int buttonSpacing = 10;
-    const int totalButtonWidth = buttonWidth * 2 + buttonSpacing;
+    const int buttonWidth = 96;
+    const int buttonSpacing = 6;
+    const int totalButtonWidth = buttonWidth * 3 + buttonSpacing * 2;
 
     bGamemode->width = buttonWidth;
     bCheats->width = buttonWidth;
+    bSize->width = buttonWidth;
 
     bGamemode->x = centerX - totalButtonWidth / 2;
     bCheats->x = bGamemode->x + buttonWidth + buttonSpacing;
+    bSize->x = bCheats->x + buttonWidth + buttonSpacing;
 
     // compute vertical centre for buttons in remaining space
     {
         int bottomPad = 20;
-        int availTop = buttonHeight + 20 + 30 + 10; // just below seed
-        int availBottom = height - bottomPad - bCreate->height - 10; // leave some gap before create
+        int availTop = buttonHeight + 20 + 30 + 10;
+        int availBottom = height - bottomPad - bCreate->height - 10;
         int availHeight = availBottom - availTop;
         if (availHeight < 0) availHeight = 0;
         int y = availTop + (availHeight - bGamemode->height) / 2;
         bGamemode->y = y;
         bCheats->y = y;
+        bSize->y = y;
     }
 
     bCreate->width = 100;
@@ -202,7 +215,7 @@ void SimpleChooseLevelScreen::mouseClicked(int x, int y, int buttonNum)
     Screen::mouseClicked(x, y, buttonNum);
 }
 
-void SimpleChooseLevelScreen::buttonClicked( Button* button )
+void SimpleChooseLevelScreen::buttonClicked(Button* button)
 {
     if (hasChosen)
         return;
@@ -219,19 +232,34 @@ void SimpleChooseLevelScreen::buttonClicked( Button* button )
         return;
     }
 
+    if (button == bSize) {
+        worldSizeIndex = (worldSizeIndex + 1) % 4;
+        bSize->msg = "Size: " + std::to_string(worldSizes[worldSizeIndex]) + "x";
+        return;
+    }
+
     if (button == bCreate && !tLevelName.text.empty()) {
+        int chosenSize = worldSizes[worldSizeIndex];
+
         int seed = getEpochTimeS();
         if (!tSeed.text.empty()) {
             std::string seedString = Util::stringTrim(tSeed.text);
             int tmpSeed;
             if (sscanf(seedString.c_str(), "%d", &tmpSeed) > 0) {
                 seed = tmpSeed;
-            } else {
+            }
+            else {
                 seed = Util::hashCode(seedString);
             }
         }
         std::string levelId = getUniqueLevelName(tLevelName.text);
-        LevelSettings settings(seed, gamemode, cheatsEnabled);
+
+        // Pass chosenSize into LevelSettings here:
+        LevelSettings settings(seed, gamemode, cheatsEnabled, chosenSize);
+
+        // Also call it globally for this session creation:
+        LevelConstants::setWorldSize(chosenSize);
+
         minecraft->selectLevel(levelId, levelId, settings);
         minecraft->hostMultiplayer();
         minecraft->setScreen(new ProgressScreen());
