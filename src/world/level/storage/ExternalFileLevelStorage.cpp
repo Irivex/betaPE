@@ -98,17 +98,26 @@ ExternalFileLevelStorage::ExternalFileLevelStorage(
 	std::string playerFolder = levelPath + "/players";
 	createFolderIfNotExists(playerFolder.c_str());
 
-	std::string datFileName   = levelPath + "/" + fnLevelDat;
+	std::string datFileName = levelPath + "/" + fnLevelDat;
 	std::string levelFileName = levelPath + "/" + fnPlayerDat;
+
 	loadedLevelData = new LevelData();
+
 	if (readLevelData(levelPath, *loadedLevelData))
 	{
 		loadedStorageVersion = loadedLevelData->getStorageVersion();
 		readPlayerData(levelFileName, *loadedLevelData);
-	} else {
+	}
+	else
+	{
 		delete loadedLevelData;
 		loadedLevelData = NULL;
 	}
+}
+
+bool ExternalFileLevelStorage::hasSavedLighting() const
+{
+	return loadedStorageVersion >= ChunkVersion_Light;
 }
 
 ExternalFileLevelStorage::~ExternalFileLevelStorage()
@@ -647,8 +656,18 @@ LevelChunk* ExternalFileLevelStorage::load(Level* level, int x, int z)
 	//if (loadedStorageVersion > SharedConstants::StorageVersion)
 		changed |= LevelConverters::ReplaceUnavailableBlocks(levelChunk);
 
-	levelChunk->recalcHeightmap();
-	levelChunk->unsaved = changed;
+		if (loadedStorageVersion >= ChunkVersion_Light && !changed)
+		{
+			// Saved light arrays are valid; recalculate heights only.
+			levelChunk->recalcHeightmapOnly();
+		}
+		else
+		{
+			// Legacy or converted chunk data needs lighting recalculation.
+			levelChunk->recalcHeightmap();
+		}
+
+		levelChunk->unsaved = changed;
 	levelChunk->terrainPopulated = true;
 	levelChunk->createdFromSave = true;
 

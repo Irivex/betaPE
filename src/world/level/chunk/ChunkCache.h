@@ -108,9 +108,13 @@ public:
                 } else {
                     newChunk = source->getChunk(x, z);
                 }
-            } else {
-				//return emptyChunk;
-				updateLights = true;
+            }
+            else {
+                // Relight only if saved lighting is missing or block data changed.
+                updateLights =
+                    (storage == NULL ||
+                        !storage->hasSavedLighting() ||
+                        newChunk->unsaved);
             }
             chunks[slot] = newChunk;
             chunkWasCreated = (newChunk != NULL && newChunk != emptyChunk);

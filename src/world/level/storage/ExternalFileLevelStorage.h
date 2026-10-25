@@ -66,6 +66,7 @@ public:
 	// @note, loadEntities and saveEntities dont use second parameter
 	void loadEntities(Level* level, LevelChunk* levelChunk);
 	void saveEntities(Level* level, LevelChunk* levelChunk);
+	virtual bool hasSavedLighting() const;
 	void saveGame(Level* level);
     void saveAll(Level* level, std::vector<LevelChunk*>& levelChunks);
 

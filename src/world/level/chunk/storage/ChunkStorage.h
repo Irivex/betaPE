@@ -22,6 +22,10 @@ public:
 	virtual void saveAll(Level* level, std::vector<LevelChunk*>& levelChunks) {
 		for (unsigned int i = 0; i < levelChunks.size(); ++i) save(level, levelChunks[i]);
 	}
+	virtual bool hasSavedLighting() const
+	{
+		return false;
+	}
     
 	virtual void tick() {}
 	virtual void flush() {}
