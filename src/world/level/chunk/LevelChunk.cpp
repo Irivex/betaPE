@@ -374,9 +374,17 @@ int LevelChunk::getTile( int x, int y, int z )
 	return blocks[x << 11 | z << 7 | y] & 0xff;
 }
 
-void LevelChunk::setData( int x, int y, int z, int val )
+void LevelChunk::setData(int x, int y, int z, int val)
 {
-	//this->unsaved = true;
+	if (data.get(x, y, z) == val)
+		return;
+
+	// Metadata changes must be saved and synchronized to joining clients.
+	this->unsaved = true;
+
+	this->updateMap[x | (z << 4)] |=
+		(1 << (y >> UpdateMapBitShift));
+
 	data.set(x, y, z, val);
 }
 

@@ -723,22 +723,28 @@ void LocalPlayer::respawn()
 
 void LocalPlayer::die(Entity* source)
 {
-	// If we're an online client, send the inventory to be dropped
-	// If we're the server, drop the inventory immediately
-	if (level->isClientSide) {
-		SendInventoryPacket packet(this, true);
-		minecraft->raknetInstance->send(packet);
-	}
-	inventory->dropAll(level->isClientSide);
-	for (int i = 0; i < NUM_ARMOR; ++i) {
-		ItemInstance* item = getArmor(i);
-		if (!ItemInstance::isArmorItem(item)) return;
+    // If we're an online client, send the inventory to be dropped.
+    // If we're the server, drop the inventory immediately.
+    if (level->isClientSide) {
+        SendInventoryPacket packet(this, true);
+        minecraft->raknetInstance->send(packet);
+    }
 
-		drop(new ItemInstance(*item), true);
-		setArmor(i, NULL);
-	}
+    inventory->dropAll(level->isClientSide);
 
-	super::die(source);
+    for (int i = 0; i < NUM_ARMOR; ++i) {
+        ItemInstance* item = getArmor(i);
+
+        // An empty armor slot should not abort the death sequence.
+        if (!ItemInstance::isArmorItem(item))
+            continue;
+
+        drop(new ItemInstance(*item), true);
+        setArmor(i, NULL);
+    }
+
+    // Always execute the normal player death logic.
+    super::die(source);
 }
 
 void LocalPlayer::swing() {
