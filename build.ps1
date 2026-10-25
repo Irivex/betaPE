@@ -24,7 +24,7 @@ $sdkTools   = "$env:LOCALAPPDATA\Android\Sdk\build-tools\35.0.0"
 $androidJar = "$env:LOCALAPPDATA\Android\Sdk\platforms\android-36\android.jar"
 $adb        = "$env:LOCALAPPDATA\Android\Sdk\platform-tools\adb.exe"
 $keystore   = "$apkbuild\debug.keystore"
-$pkg        = "com.mojang.minecraftpe"
+$pkg        = "com.mojang.betape"
 
 # Auto-detect keytool from JAVA_HOME, then from common install locations
 $keytool = if ($env:JAVA_HOME) { "$env:JAVA_HOME\bin\keytool.exe" } else {
@@ -47,9 +47,9 @@ $classesDir = "$apkbuild\classes"
 $dexOut     = "$apkbuild\classes.dex"
 $dataDir    = "$repo\data"
 
-$unsigned   = "$apkbuild\minecraftpe-unsigned.apk"
-$aligned    = "$apkbuild\minecraftpe-aligned.apk"
-$signed     = "$apkbuild\minecraftpe-debug.apk"
+$unsigned   = "$apkbuild\betape-unsigned.apk"
+$aligned    = "$apkbuild\betape-aligned.apk"
+$signed     = "$apkbuild\betape-debug.apk"
 
 Add-Type -Assembly "System.IO.Compression.FileSystem"
 

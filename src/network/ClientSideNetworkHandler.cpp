@@ -79,12 +79,29 @@ bool ClientSideNetworkHandler::areAllChunksLoaded()
 
 bool ClientSideNetworkHandler::isChunkLoaded(int x, int z)
 {
-	if (x < 0 || x >= LevelConstants::CHUNK_CACHE_WIDTH || z < 0 || z >= LevelConstants::CHUNK_CACHE_WIDTH) {
+	const int width = LevelConstants::CHUNK_CACHE_WIDTH;
+
+	// Preserve the existing behaviour for out-of-world requests.
+	if (x < 0 || x >= width || z < 0 || z >= width) {
 		LOGE("Error: Tried to request chunk (%d, %d)\n", x, z);
 		return true;
 	}
-	return chunksLoaded[x * LevelConstants::CHUNK_CACHE_WIDTH + z];
-	//return areAllChunksLoaded();
+
+	const size_t index =
+		static_cast<size_t>(x) * width + z;
+
+	if (index >= chunksLoaded.size()) {
+		LOGE(
+			"Chunk tracking size mismatch: x=%d z=%d "
+			"width=%d index=%zu vectorSize=%zu\n",
+			x, z, width, index, chunksLoaded.size()
+		);
+
+		// Avoid an out-of-range vector access.
+		return true;
+	}
+
+	return chunksLoaded[index];
 }
 
 void ClientSideNetworkHandler::onConnect(const RakNet::RakNetGUID& hostGuid)
@@ -164,6 +181,7 @@ void ClientSideNetworkHandler::handle(const RakNet::RakNetGUID& source, LoginSta
 
 
 void ClientSideNetworkHandler::handle(const RakNet::RakNetGUID& source, StartGamePacket* packet)
+
 {
 	LOGI("StartGamePacket\n");
 
@@ -174,28 +192,63 @@ void ClientSideNetworkHandler::handle(const RakNet::RakNetGUID& source, StartGam
 	}
 #endif
 
-	// @todo @note i think its trash
-	// we can put it directly to selectLevel?
-	if (packet->chunkCacheWidth != 0) {
-		printf("lol \n");		
-		LevelConstants::CHUNK_CACHE_WIDTH = packet->chunkCacheWidth;
-		LevelConstants::LEVEL_WIDTH = LevelConstants::CHUNK_CACHE_WIDTH * LevelConstants::CHUNK_WIDTH;
-		LevelConstants::LEVEL_DEPTH = LevelConstants::CHUNK_CACHE_WIDTH * LevelConstants::CHUNK_DEPTH;
-		LevelChunk::ChunkBlockCount = LevelConstants::CHUNK_BLOCK_COUNT;
-	}
-	NumRequestChunks = LevelConstants::CHUNK_CACHE_WIDTH * LevelConstants::CHUNK_CACHE_WIDTH;
+	// Read the host's world dimensions.
+	const int serverChunkWidth =
+		packet->chunkCacheWidth > 0
+		? packet->chunkCacheWidth
+		: LevelConstants::CHUNK_CACHE_WIDTH;
+
+	const int serverWorldWidth =
+		serverChunkWidth * LevelConstants::CHUNK_WIDTH;
+
+	const int serverWorldDepth =
+		serverChunkWidth * LevelConstants::CHUNK_DEPTH;
+
+	LOGI(
+		"Host world size: chunks=%d width=%d depth=%d\n",
+		serverChunkWidth,
+		serverWorldWidth,
+		serverWorldDepth
+	);
+
+	// Apply the host's dimensions before creating the multiplayer level.
+	LevelConstants::CHUNK_CACHE_WIDTH = serverChunkWidth;
+	LevelConstants::LEVEL_WIDTH = serverWorldWidth;
+	LevelConstants::LEVEL_DEPTH = serverWorldDepth;
+	LevelChunk::ChunkBlockCount = LevelConstants::CHUNK_BLOCK_COUNT;
+
+	// Initialise chunk tracking exactly once.
+	NumRequestChunks = serverChunkWidth * serverChunkWidth;
 	requestNextChunkIndexList.resize(NumRequestChunks);
-	chunksLoaded.resize(NumRequestChunks);
+	chunksLoaded.assign(NumRequestChunks, false);
 
 	const std::string& levelId = LevelStorageSource::TempLevelId;
 	LevelStorageSource* storageSource = minecraft->getLevelSource();
+
 	storageSource->deleteLevel(levelId);
-	//level = new Level(storageSource->selectLevel(levelId, true), "temp", packet->levelSeed, SharedConstants::StorageVersion);
+
 	MultiPlayerLevel* level = new MultiPlayerLevel(
 		storageSource->selectLevel(levelId, true),
 		"temp",
-		LevelSettings(packet->levelSeed, LevelSettings::validateGameType(packet->gameType)),
-		SharedConstants::StorageVersion);
+		LevelSettings(
+			packet->levelSeed,
+			LevelSettings::validateGameType(packet->gameType),
+			false,
+			serverWorldWidth
+		),
+		SharedConstants::StorageVersion
+	);
+
+	// Log AFTER construction, because _init() may change the globals.
+	LOGI(
+		"After multiplayer level creation: "
+		"chunks=%d width=%d depth=%d tracked=%llu\n",
+		LevelConstants::CHUNK_CACHE_WIDTH,
+		LevelConstants::LEVEL_WIDTH,
+		LevelConstants::LEVEL_DEPTH,
+		static_cast<unsigned long long>(chunksLoaded.size())
+	);
+
 	level->isClientSide = true;
 
 	bool isCreative = (packet->gameType == GameType::Creative);
