@@ -290,6 +290,7 @@ void ClientSideNetworkHandler::handle(const RakNet::RakNetGUID& source, StartGam
 	player->owner = rakPeer->GetMyGUID();
 	player->entityId = packet->entityId;
 	player->moveTo(packet->x, packet->y, packet->z, player->yRot, player->xRot);
+	player->waitingForInitialChunk = true;
 
 	LOGI("new pos: %f, %f [%f - %f]\n", player->x, player->z, player->bb.y0, player->bb.y1);
 
@@ -860,6 +861,28 @@ void ClientSideNetworkHandler::handle(
 		else
 		{
 			++it;
+		}
+	}
+
+	// Let the guest start playing once their actual spawn chunk arrives.
+	if (minecraft && minecraft->player)
+	{
+		LocalPlayer* localPlayer =
+			static_cast<LocalPlayer*>(minecraft->player);
+
+		const int playerChunkX = Mth::floor(
+			localPlayer->x / (float)LevelConstants::CHUNK_WIDTH);
+
+		const int playerChunkZ = Mth::floor(
+			localPlayer->z / (float)LevelConstants::CHUNK_DEPTH);
+
+		if (packet->x == playerChunkX &&
+			packet->z == playerChunkZ)
+		{
+			localPlayer->waitingForInitialChunk = false;
+
+			LOGI("Initial player chunk received (%d, %d)\n",
+				packet->x, packet->z);
 		}
 	}
 

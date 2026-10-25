@@ -224,93 +224,158 @@ void ServerSideNetworkHandler::onDisconnect(const RakNet::RakNetGUID& guid)
 	}
 }
 
-void ServerSideNetworkHandler::handle(const RakNet::RakNetGUID& source, LoginPacket* packet)
+
+void ServerSideNetworkHandler::handle(
+	const RakNet::RakNetGUID& source,
+	LoginPacket* packet)
 {
 	if (!level) return;
 	if (!_allowIncoming) return;
 
 	LOGI("LoginPacket\n");
-	
+
 	int loginStatus = LoginStatus::Success;
-	//
-	// Bad/incompatible client version
-	//
-	bool oldClient = packet->clientNetworkVersion < SharedConstants::NetworkProtocolLowestSupportedVersion;
-	bool oldServer = packet->clientNetworkLowestSupportedVersion > SharedConstants::NetworkProtocolVersion;
+
+	bool oldClient =
+		packet->clientNetworkVersion <
+		SharedConstants::NetworkProtocolLowestSupportedVersion;
+
+	bool oldServer =
+		packet->clientNetworkLowestSupportedVersion >
+		SharedConstants::NetworkProtocolVersion;
+
 	if (oldClient || oldServer || !packet->newProto)
-		loginStatus = oldClient || !packet->newProto? LoginStatus::Failed_ClientOld : LoginStatus::Failed_ServerOld;
+	{
+		loginStatus =
+			oldClient || !packet->newProto
+			? LoginStatus::Failed_ClientOld
+			: LoginStatus::Failed_ServerOld;
+	}
 
 	std::string nicknameLower = packet->clientName.C_String();
-	std::transform(nicknameLower.begin(), nicknameLower.end(), nicknameLower.begin(), ::tolower);
+
+	std::transform(
+		nicknameLower.begin(),
+		nicknameLower.end(),
+		nicknameLower.begin(),
+		::tolower);
 
 	printf("%s lower \n", nicknameLower.c_str());
-	for (int i = 0; i < level->players.size(); i++) {
-		ServerPlayer* player = (ServerPlayer*) level->players.at(i);
+
+	for (int i = 0; i < level->players.size(); i++)
+	{
+		ServerPlayer* player =
+			(ServerPlayer*)level->players.at(i);
 
 		std::string clientLower = player->name;
-		std::transform(clientLower.begin(), clientLower.end(), clientLower.begin(), ::tolower);
 
-		// @todo to lower case
-		if (nicknameLower == clientLower) {
-			loginStatus = packet->newProto ? LoginStatus::Failed_TakenNickname : LoginStatus::Failed_ClientOld;
+		std::transform(
+			clientLower.begin(),
+			clientLower.end(),
+			clientLower.begin(),
+			::tolower);
+
+		if (nicknameLower == clientLower)
+		{
+			loginStatus = packet->newProto
+				? LoginStatus::Failed_TakenNickname
+				: LoginStatus::Failed_ClientOld;
 			break;
 		}
 	}
-	
-	for (auto& banned : level->bannedPlayers) {
-		if (nicknameLower == banned) {
-			loginStatus = packet->newProto ? LoginStatus::Failed_Banned : LoginStatus::Failed_ClientOld;
+
+	for (auto& banned : level->bannedPlayers)
+	{
+		if (nicknameLower == banned)
+		{
+			loginStatus = packet->newProto
+				? LoginStatus::Failed_Banned
+				: LoginStatus::Failed_ClientOld;
 			break;
 		}
 	}
+
 
 	RakNet::BitStream bitStream;
 	LoginStatusPacket(loginStatus).write(&bitStream);
-	rakPeer->Send(&bitStream, HIGH_PRIORITY, RELIABLE_ORDERED, 0, source, false);
+
+	rakPeer->Send(
+		&bitStream,
+		HIGH_PRIORITY,
+		RELIABLE_ORDERED,
+		0,
+		source,
+		false);
 
 	if (LoginStatus::Success != loginStatus)
 		return;
 
-	//
-	// Valid client version
-	//
-	
-	Player* newPlayer = new ServerPlayer(minecraft, level, packet->newProto);
-	
+	Player* newPlayer =
+		new ServerPlayer(minecraft, level, packet->newProto);
+
 	minecraft->gameMode->initAbilities(newPlayer->abilities);
+
 	newPlayer->owner = source;
 	newPlayer->name = packet->clientName.C_String();
+
+	// NEW: Load the saved position before sending StartGamePacket.
+	if (!level->getLevelStorage()->loadPlayer(*newPlayer))
+	{
+		LOGW("Failed to load %s data; using spawn position\n",
+			newPlayer->name.c_str());
+	}
+
 	_pendingPlayers.push_back(newPlayer);
 
-	LOGI("Adding new player... isCreative: %i\n", minecraft->isCreativeMode());
+	LOGI("Adding new player... isCreative: %i\n",
+		minecraft->isCreativeMode());
 
-	// Reset the player so he doesn't spawn inside blocks
-	while (newPlayer->y > 0) {
-		newPlayer->setPos(newPlayer->x, newPlayer->y, newPlayer->z);
-		if (level->getCubes(newPlayer, newPlayer->bb).size() == 0) break;
+	// Correct the position only against the server's real world.
+	while (newPlayer->y > 0)
+	{
+		newPlayer->setPos(
+			newPlayer->x,
+			newPlayer->y,
+			newPlayer->z);
+
+		if (level->getCubes(newPlayer, newPlayer->bb).size() == 0)
+			break;
+
 		newPlayer->y += 1;
 	}
-	newPlayer->moveTo(newPlayer->x, newPlayer->y - newPlayer->heightOffset, newPlayer->z, newPlayer->yRot, newPlayer->xRot);
 
-	// send world seed
+	newPlayer->moveTo(
+		newPlayer->x,
+		newPlayer->y - newPlayer->heightOffset,
+		newPlayer->z,
+		newPlayer->yRot,
+		newPlayer->xRot);
+
 	{
-        RakNet::BitStream bitStream;
+		RakNet::BitStream startGameStream;
 
-        // @todo: Read from LevelData?
 		int gameType = minecraft->isCreativeMode()
 			? GameType::Creative
 			: GameType::Survival;
 
-        StartGamePacket(
-            level->getSeed(),
-            level->getLevelData()->getGeneratorVersion(),
-            gameType,
-            newPlayer->entityId,
-            newPlayer->x, newPlayer->y - newPlayer->heightOffset, newPlayer->z,
+		StartGamePacket(
+			level->getSeed(),
+			level->getLevelData()->getGeneratorVersion(),
+			gameType,
+			newPlayer->entityId,
+			newPlayer->x,
+			newPlayer->y - newPlayer->heightOffset,
+			newPlayer->z,
 			LevelConstants::CHUNK_CACHE_WIDTH
-        ).write(&bitStream);
+		).write(&startGameStream);
 
-        rakPeer->Send(&bitStream, HIGH_PRIORITY, RELIABLE_ORDERED, 0, source, false);
+		rakPeer->Send(
+			&startGameStream,
+			HIGH_PRIORITY,
+			RELIABLE_ORDERED,
+			0,
+			source,
+			false);
 	}
 }
 
@@ -382,9 +447,6 @@ void ServerSideNetworkHandler::onReady_ClientGeneration(const RakNet::RakNetGUID
 		}
 	}
 
-	if (!minecraft->level->getLevelStorage()->loadPlayer(*newPlayer)) {
-		LOGW("Failed to load %s data\n", newPlayer->name.c_str());
-	}
 	
 	// Credits to EpikIzCool
 	bitStream.Reset();

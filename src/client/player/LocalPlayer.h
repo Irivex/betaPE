@@ -80,6 +80,9 @@ private:
 public:
 	IMoveInput* input;
 	bool autoJumpEnabled;
+
+	// True while waiting for the authoritative multiplayer spawn chunk.
+	bool waitingForInitialChunk;
 protected:
 	Minecraft* minecraft;
 	int jumpTriggerTime;

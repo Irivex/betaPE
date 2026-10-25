@@ -361,6 +361,7 @@ LocalPlayer::LocalPlayer(Minecraft* minecraft, Level* level, const std::string& 
 	xBobO(0.0f),
 	yBobO(0.0f)
 {
+	waitingForInitialChunk = false;
 	this->dimension = dimension;
 	_init();
 #ifndef STANDALONE_SERVER
@@ -416,7 +417,11 @@ bool LocalPlayer::isSolidTile(int x, int y, int z) {
 	return tileId > 0 && Tile::tiles[tileId]->material->isSolid();
 }
 
-void LocalPlayer::tick() {
+void LocalPlayer::tick()
+{
+	// Don't simulate the guest inside temporary, locally generated terrain.
+	if (waitingForInitialChunk)
+		return;
 
 	super::tick();
 	if(!useItem.isNull()) {

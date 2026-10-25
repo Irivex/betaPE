@@ -279,7 +279,12 @@ void Minecraft::setLevel(Level* level, const std::string& message /* ="" */, Loc
 		if (!player && forceInsertPlayer)
 		{
 			player = forceInsertPlayer;
-			player->resetPos(false);
+
+			// The multiplayer server supplies the authoritative position.
+			// Client terrain may not contain the real cave or base yet.
+			if (!level->isClientSide)
+				player->resetPos(false);
+
 			//level->addEntity(forceInsertPlayer);
 		}
 		else if (player != NULL) {
