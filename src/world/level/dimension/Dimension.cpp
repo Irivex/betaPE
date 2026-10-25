@@ -38,16 +38,28 @@ void Dimension::init()
 }
 
 /*virtual*/
-bool Dimension::isValidSpawn(int x, int z) {
-    int topTile = level->getTopTile(x, z);
+bool Dimension::isValidSpawn(int x, int z)
+{
+	int topTile = level->getTopTile(x, z);
 
-	if (topTile == Tile::invisible_bedrock->id)
+	// Air or an invalid block ID cannot be a valid spawn surface.
+	if (topTile <= 0 || topTile >= Tile::NUM_BLOCK_TYPES)
 		return false;
 
-    //if (topTile != Tile::sand->id) return false;
-	if (!Tile::tiles[topTile]->isSolidRender()) return false;
+	// Some block IDs may not have a registered Tile object.
+	Tile* tile = Tile::tiles[topTile];
 
-    return true;
+	if (tile == NULL)
+		return false;
+
+	if (Tile::invisible_bedrock != NULL &&
+		topTile == Tile::invisible_bedrock->id)
+		return false;
+
+	if (!tile->isSolidRender())
+		return false;
+
+	return true;
 }
 
 float Dimension::getTimeOfDay(long time, float a) {
