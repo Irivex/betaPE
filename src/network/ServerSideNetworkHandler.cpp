@@ -521,35 +521,76 @@ void ServerSideNetworkHandler::handle(const RakNet::RakNetGUID& source, RemoveBl
 	LOGI("Remove block [%i, %i, %i]\n", packet->x, packet->y, packet->z);
 }
 
-void ServerSideNetworkHandler::handle(const RakNet::RakNetGUID& source, RequestChunkPacket* packet)
+void ServerSideNetworkHandler::handle(
+	const RakNet::RakNetGUID& source,
+	RequestChunkPacket* packet)
 {
 	if (!level)
-        return;
+		return;
 
-    LevelChunk* chunk = level->getChunk(packet->x, packet->z);
+	const int width = LevelConstants::CHUNK_CACHE_WIDTH;
 
-	if (!chunk)
-        return;
+	// Reject invalid coordinates before asking ChunkCache for a chunk.
+	// Otherwise ChunkCache can return its shared empty chunk at (0, 0).
+	if (packet->x < 0 || packet->x >= width ||
+		packet->z < 0 || packet->z >= width)
+	{
+		LOGW("Ignoring invalid chunk request (%d, %d)\n",
+			packet->x, packet->z);
+		return;
+	}
 
-	ChunkDataPacket cpacket(chunk->x, chunk->z, chunk);
+	LevelChunk* chunk = level->getChunk(packet->x, packet->z);
+
+	if (!chunk ||
+		chunk->isEmpty() ||
+		chunk->x != packet->x ||
+		chunk->z != packet->z)
+	{
+		LOGW("Could not provide requested chunk (%d, %d)\n",
+			packet->x, packet->z);
+		return;
+	}
+
+	ChunkDataPacket chunkPacket(
+		chunk->x, chunk->z, chunk);
 
 	RakNet::BitStream bitStream;
-	cpacket.write(&bitStream);
-	rakPeer->Send(&bitStream, HIGH_PRIORITY, RELIABLE_ORDERED, 0, source, false);
-    //LOGI("RequestChunkPacket @ (%d, %d). %d bytes\n", packet->x, packet->z, cpacket.chunkData.GetNumberOfBytesUsed());
-	//LOGI("size: %d\n", bitStream.GetNumberOfBytesUsed());
+	chunkPacket.write(&bitStream);
 
-    const LevelChunk::TEMap& teMap = chunk->getTileEntityMap();
-    for (LevelChunk::TEMapCIterator cit = teMap.begin(); cit != teMap.end(); ++cit) {
-        TileEntity* te = cit->second;
-        if (Packet* p = te->getUpdatePacket()) {
-            bitStream.Reset();
-            p->write(&bitStream);
-            raknetInstance->send(source, p);
-        }
-    }
+	rakPeer->Send(
+		&bitStream,
+		HIGH_PRIORITY,
+		RELIABLE_ORDERED,
+		0,
+		source,
+		false);
 
-	// LOGI("Requested chunk [%i, %i]\n", packet->x, packet->z);
+	// Send tile-entity data belonging to this chunk as well.
+	const LevelChunk::TEMap& teMap =
+		chunk->getTileEntityMap();
+
+	for (LevelChunk::TEMapCIterator it = teMap.begin();
+		it != teMap.end(); ++it)
+	{
+		TileEntity* tileEntity = it->second;
+
+		if (Packet* updatePacket = tileEntity->getUpdatePacket())
+		{
+			RakNet::BitStream entityStream;
+			updatePacket->write(&entityStream);
+
+			rakPeer->Send(
+				&entityStream,
+				HIGH_PRIORITY,
+				RELIABLE_ORDERED,
+				0,
+				source,
+				false);
+
+			delete updatePacket;
+		}
+	}
 }
 
 void ServerSideNetworkHandler::levelGenerated( Level* level )

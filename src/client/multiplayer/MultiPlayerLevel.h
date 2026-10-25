@@ -181,6 +181,10 @@ public:
         }
         return false;
     }
+    bool doSetTileNoUpdate(int x, int y, int z, int tile) {
+        clearResetRegion(x, y, z, x, y, z);
+        return super::setTileNoUpdate(x, y, z, tile);
+    }
 
     bool doSetTileAndData(int x, int y, int z, int tile, int data) {
         clearResetRegion(x, y, z, x, y, z);

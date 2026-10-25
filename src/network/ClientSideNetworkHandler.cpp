@@ -39,16 +39,26 @@
 
 static MultiPlayerLevel* mpcast(Level* l) { return (MultiPlayerLevel*) l; }
 
-ClientSideNetworkHandler::ClientSideNetworkHandler(Minecraft* minecraft, IRakNetInstance* raknetInstance)
-:	minecraft(minecraft),
-	raknetInstance(raknetInstance),
+ClientSideNetworkHandler::ClientSideNetworkHandler(
+	Minecraft* minecraft,
+	IRakNetInstance* raknetInstance)
+	: minecraft(minecraft),
 	level(NULL),
+	raknetInstance(raknetInstance),
 	requestNextChunkPosition(0),
-    requestNextChunkIndex(0)
+	NumRequestChunks(0),
+	requestNextChunkIndex(0),
+	loadedChunkCount(0)
 {
-	NumRequestChunks = LevelConstants::CHUNK_CACHE_WIDTH * LevelConstants::CHUNK_CACHE_WIDTH;
+	NumRequestChunks =
+		LevelConstants::CHUNK_CACHE_WIDTH *
+		LevelConstants::CHUNK_CACHE_WIDTH;
+
 	requestNextChunkIndexList.resize(NumRequestChunks);
 	chunksLoaded.resize(NumRequestChunks);
+
+	clearChunksLoaded();
+
 	rakPeer = raknetInstance->getPeer();
 }
 
@@ -60,45 +70,69 @@ void ClientSideNetworkHandler::requestNextChunk()
 {
 	if (requestNextChunkIndex < NumRequestChunks)
 	{
-        IntPair& chunk = requestNextChunkIndexList[requestNextChunkIndex];
-		RequestChunkPacket packet(chunk.x, chunk.y);
-        raknetInstance->send(packet);
+		const IntPair& chunk =
+			requestNextChunkIndexList[requestNextChunkIndex];
 
-        //LOGI("requesting chunks @ (%d, %d)\n", chunk.x, chunk.y);
-        
-		//raknetInstance->send(new RequestChunkPacket(requestNextChunkPosition % LevelConstants::CHUNK_CACHE_WIDTH, requestNextChunkPosition / LevelConstants::CHUNK_CACHE_WIDTH));
-		requestNextChunkIndex++;
-        requestNextChunkPosition++;
+		RequestChunkPacket packet(chunk.x, chunk.y);
+		raknetInstance->send(packet);
+
+		++requestNextChunkIndex;
+		++requestNextChunkPosition;
+		return;
+	}
+
+	// If every initial request has been sent but a chunk is still
+	// missing, request the first missing chunk again.
+	if (areAllChunksLoaded())
+		return;
+
+	const int width = LevelConstants::CHUNK_CACHE_WIDTH;
+
+	for (int i = 0; i < NumRequestChunks; ++i)
+	{
+		const IntPair& chunk = requestNextChunkIndexList[i];
+
+		if (chunk.x < 0 || chunk.x >= width ||
+			chunk.y < 0 || chunk.y >= width)
+		{
+			continue;
+		}
+
+		const int index = chunk.x * width + chunk.y;
+
+		if (index >= 0 &&
+			index < static_cast<int>(chunksLoaded.size()) &&
+			!chunksLoaded[index])
+		{
+			RequestChunkPacket packet(chunk.x, chunk.y);
+			raknetInstance->send(packet);
+			return;
+		}
 	}
 }
 
 bool ClientSideNetworkHandler::areAllChunksLoaded()
 {
-	return (requestNextChunkPosition >= (LevelConstants::CHUNK_CACHE_WIDTH * LevelConstants::CHUNK_CACHE_WIDTH));
+	return NumRequestChunks > 0 &&
+		loadedChunkCount >= NumRequestChunks;
 }
 
 bool ClientSideNetworkHandler::isChunkLoaded(int x, int z)
 {
 	const int width = LevelConstants::CHUNK_CACHE_WIDTH;
 
-	// Preserve the existing behaviour for out-of-world requests.
-	if (x < 0 || x >= width || z < 0 || z >= width) {
-		LOGE("Error: Tried to request chunk (%d, %d)\n", x, z);
-		return true;
+	if (x < 0 || x >= width ||
+		z < 0 || z >= width)
+	{
+		return false;
 	}
 
-	const size_t index =
-		static_cast<size_t>(x) * width + z;
+	const int index = x * width + z;
 
-	if (index >= chunksLoaded.size()) {
-		LOGE(
-			"Chunk tracking size mismatch: x=%d z=%d "
-			"width=%d index=%zu vectorSize=%zu\n",
-			x, z, width, index, chunksLoaded.size()
-		);
-
-		// Avoid an out-of-range vector access.
-		return true;
+	if (index < 0 ||
+		index >= static_cast<int>(chunksLoaded.size()))
+	{
+		return false;
 	}
 
 	return chunksLoaded[index];
@@ -544,29 +578,50 @@ void ClientSideNetworkHandler::handle(const RakNet::RakNetGUID& source, MoveEnti
 	}
 }
 
-void ClientSideNetworkHandler::handle(const RakNet::RakNetGUID& source, UpdateBlockPacket* packet)
+void ClientSideNetworkHandler::handle(
+	const RakNet::RakNetGUID& source,
+	UpdateBlockPacket* packet)
 {
-	if (!level) return;
+	if (!level)
+		return;
 
-	//LOGI("UpdateBlockPacket @ %d, %d, %d\n", packet->x, packet->y, packet->z);
+	const int x = packet->x;
+	const int y = static_cast<int>(packet->y);
+	const int z = packet->z;
 
-	int x = packet->x, z = packet->z;
-
-	if (isChunkLoaded(x >> 4, z >> 4))
+	if (x < 0 || x >= LevelConstants::LEVEL_WIDTH ||
+		z < 0 || z >= LevelConstants::LEVEL_DEPTH ||
+		y < 0 || y >= LevelConstants::LEVEL_HEIGHT)
 	{
-		//LOGI("chunk is loaded - UPDATE @ %d, %d, %d -- %d, %d\n", x, packet->y, z, packet->blockId, packet->blockData);
+		LOGI("Ignoring out-of-world block update (%d, %d, %d)\n",
+			x, y, z);
+		return;
+	}
 
-		int y = packet->y;
-		int tileId = Tile::transformToValidBlockId(packet->blockId, x, y, z);
-		level->setTileAndData(x, y, z, tileId, packet->blockData);
-	} else {
+	const int chunkX = x / LevelConstants::CHUNK_WIDTH;
+	const int chunkZ = z / LevelConstants::CHUNK_DEPTH;
+
+	const int tileId =
+		Tile::transformToValidBlockId(packet->blockId, x, y, z);
+
+	if (isChunkLoaded(chunkX, chunkZ))
+	{
+		// This is an authoritative update from the server.
+		// Do not schedule a rollback to the previous block.
+		mpcast(level)->doSetTileAndData(
+			x, y, z, tileId, packet->blockData);
+	}
+	else
+	{
+		// Remember the update until its chunk has arrived.
 		SBufferedBlockUpdate update;
 		update.blockId = packet->blockId;
 		update.blockData = packet->blockData;
 		update.setData = true;
-		update.x = packet->x;
+		update.x = x;
 		update.y = packet->y;
-		update.z = packet->z;
+		update.z = z;
+
 		bufferedBlockUpdates.push_back(update);
 	}
 }
@@ -600,148 +655,220 @@ void ClientSideNetworkHandler::handle(const RakNet::RakNetGUID& source, EntityEv
 	if (e) e->handleEntityEvent(packet->eventId);
 }
 
-void ClientSideNetworkHandler::handle(const RakNet::RakNetGUID& source, ChunkDataPacket* packet)
+void ClientSideNetworkHandler::handle(
+	const RakNet::RakNetGUID& source,
+	ChunkDataPacket* packet)
 {
-	if (!level) {
-		LOGI("level @ handle ChunkDataPacket is 0\n");
-		return;
-	}
-	//LOGI("ChunkDataPacket\n");
-
-	LevelChunk* chunk = level->getChunkSource()->create(packet->x, packet->z);
-	if (!chunk || chunk->isEmpty())
+	if (!level || !level->getChunkSource())
 	{
-		LOGI("Failed to find write-able chunk\n");
+		LOGI("Cannot process ChunkDataPacket: level or chunk source is NULL\n");
 		return;
 	}
 
-	//unsigned char* blockIds = chunk->getBlockData();
+	const int width = LevelConstants::CHUNK_CACHE_WIDTH;
+
+	// Never accept a packet outside the world's actual chunk grid.
+	if (packet->x < 0 || packet->x >= width ||
+		packet->z < 0 || packet->z >= width)
+	{
+		LOGI("Ignoring out-of-world ChunkDataPacket (%d, %d)\n",
+			packet->x, packet->z);
+		return;
+	}
+
+	LevelChunk* chunk =
+		level->getChunkSource()->create(packet->x, packet->z);
+
+	if (!chunk || chunk->isEmpty() ||
+		chunk->x != packet->x || chunk->z != packet->z)
+	{
+		LOGI("Failed to find writable chunk (%d, %d)\n",
+			packet->x, packet->z);
+		return;
+	}
+
 	DataLayer& blockData = chunk->data;
 
 	const int setSize = LevelConstants::LEVEL_HEIGHT / 8;
-	const int setShift = 4; // power of LevelConstants::LEVEL_HEIGHT / 8
+	const int setShift = 4;
 
 	bool recalcHeight = false;
 
-	int x0 = 16, x1 = 0, z0 = 16, z1 = 0, y0 = LevelConstants::LEVEL_HEIGHT, y1 = 0;
-	int rx = packet->x << 4;
-	int rz = packet->z << 4;
+	int x0 = 16, x1 = 0;
+	int z0 = 16, z1 = 0;
+	int y0 = LevelConstants::LEVEL_HEIGHT, y1 = 0;
 
-	unsigned char* readBlockBuffer = new unsigned char[setSize];
-	unsigned char* readDataBuffer = new unsigned char[setSize / 2];
+	const int rx = packet->x << 4;
+	const int rz = packet->z << 4;
 
-	for (int i = 0; i < LevelConstants::CHUNK_COLUMNS; i++)
+	unsigned char* readBlockBuffer =
+		new unsigned char[setSize];
+
+	unsigned char* readDataBuffer =
+		new unsigned char[setSize / 2];
+
+	unsigned char* blockIds = chunk->getBlockData();
+
+	MultiPlayerLevel* multiplayerLevel = mpcast(level);
+
+	for (int i = 0; i < LevelConstants::CHUNK_COLUMNS; ++i)
 	{
 		unsigned char updateBits = 0;
+
 		packet->chunkData.Read(updateBits);
 
-		if (updateBits > 0)
+		if (updateBits == 0)
+			continue;
+
+		recalcHeight = true;
+
+		const int colX = i % LevelConstants::CHUNK_WIDTH;
+		const int colZ = i / LevelConstants::CHUNK_WIDTH;
+
+		const int colDataPosition =
+			(colX << 11) | (colZ << 7);
+
+		for (int set = 0; set < 8; ++set)
 		{
-			recalcHeight = true;
-
-			int colX = (i % LevelConstants::CHUNK_WIDTH);
-			int colZ = (i / LevelConstants::CHUNK_WIDTH);
-			int colDataPosition = colX << 11 | colZ << 7;
-
-			for (int set = 0; set < 8; set++)
+			if ((updateBits & (1 << set)) != 0)
 			{
-				if ((updateBits & (1 << set)) != 0) 
+				packet->chunkData.Read(
+					reinterpret_cast<char*>(readBlockBuffer),
+					setSize);
+
+				packet->chunkData.Read(
+					reinterpret_cast<char*>(readDataBuffer),
+					setSize / 2);
+
+				for (int part = 0; part < setSize; ++part)
 				{
-					packet->chunkData.Read((char*)readBlockBuffer, setSize);
-					packet->chunkData.Read((char*)readDataBuffer, setSize / 2);
+					const int x = rx + colX;
+					const int y = (set << setShift) + part;
+					const int z = rz + colZ;
 
-					for (int part = 0; part < setSize; part++)
-					{
-						//if (readBlockBuffer[part] == ((Tile*)Tile::grass)->id)
-						//	readBlockBuffer[part] = 255;
-						int x = rx + colX;
-						int y = (set << setShift) + part;
-						int z = rz + colZ;
+					const int tileId =
+						Tile::transformToValidBlockId(
+							readBlockBuffer[part], x, y, z);
 
-						int tileId = Tile::transformToValidBlockId(readBlockBuffer[part], x, y, z);
-						level->setTileNoUpdate(x, y, z, tileId);
-					}
-					// ((part & 1) == 0) ? readDataBuffer[part >> 1] & 0xf : (readDataBuffer[part >> 1] & 0xf0) >> 4
-
-					//packet->chunkData.Read((char*)(&blockIds[colDataPosition + (set << setShift)]), setSize);
-					// block data is only 4 bits per block
-					//packet->chunkData.Read((char*)(&blockData.data[(colDataPosition + (set << setShift)) >> 1]), setSize >> 1);
-
-					memcpy(&blockData.data[(colDataPosition + (set << setShift)) >> 1], readDataBuffer, setSize >> 1);
+					// Apply server data without creating a rollback entry.
+					multiplayerLevel->doSetTileNoUpdate(
+						x, y, z, tileId);
 				}
 
-				if (((1 << set) << setShift) < y0)
-				{
-					y0 = ((1 << set) << setShift);
-				}
-				if (((1 << set) << setShift) + (LevelConstants::LEVEL_HEIGHT / 8) - 1 > y1)
-				{
-					y1 = ((1 << set) << setShift) + (LevelConstants::LEVEL_HEIGHT / 8) - 1;
-				}
+				std::memcpy(
+					&blockData.data[
+						(colDataPosition + (set << setShift)) >> 1],
+					readDataBuffer,
+							setSize >> 1);
 			}
-			if ((i % LevelConstants::CHUNK_WIDTH) < x0)
-			{
-				x0 = (i % LevelConstants::CHUNK_WIDTH);
-			}
-			if ((i % LevelConstants::CHUNK_WIDTH) > x1)
-			{
-				x1 = (i % LevelConstants::CHUNK_WIDTH);
-			}
-			if ((i / LevelConstants::CHUNK_WIDTH) < z0)
-			{
-				z0 = (i / LevelConstants::CHUNK_WIDTH);
-			}
-			if ((i / LevelConstants::CHUNK_WIDTH) > z1)
-			{
-				z1 = (i / LevelConstants::CHUNK_WIDTH);
-			}
+
+			const int sectionY = (1 << set) << setShift;
+
+			if (sectionY < y0)
+				y0 = sectionY;
+
+			if (sectionY + setSize - 1 > y1)
+				y1 = sectionY + setSize - 1;
 		}
+
+		if (colX < x0)
+			x0 = colX;
+
+		if (colX > x1)
+			x1 = colX;
+
+		if (colZ < z0)
+			z0 = colZ;
+
+		if (colZ > z1)
+			z1 = colZ;
 	}
 
 	delete[] readBlockBuffer;
 	delete[] readDataBuffer;
 
- 	if (recalcHeight)
- 	{
-// 		chunk->recalcHeightmap();
-// 		//chunk->recalcBlockLights();
- 		level->setTilesDirty((packet->x << 4) + x0, y0, (packet->z << 4) + z0, (packet->x << 4) + x1, y1, (packet->z << 4) + z1);
-// 		int rx = packet->x << 4;
-// 		int rz = packet->z << 4;
-// 		level->updateLight(LightLayer::Block, x0 + rx - 1, y0, z0 + rz - 1, x1 + rx + 1, y1, z1 + rz + 1);
-// 		//for (int cx = x0; cx < x1; cx++)
-// 		//{
-// 		//	for (int cz = z0; cz < z1; cz++)
-// 		//	{
-// 		//		for (int cy = y0; cy < y1; cy++)
-// 		//		{
-// 					//level->updateLight(LightLayer::Sky, cx + rx, cy, cz + rz, cx + rx, cy, cz + rz);
-// 		//			level->updateLight(LightLayer::Block, cx + rx - 1, cy, cz + rz - 1, cx + rx + 1, cy, cz + rz + 1);
-// 		//		}
-// 		//	}
-// 		//}
-// 
- 	}
-	//chunk->terrainPopulated = true;
+	if (recalcHeight)
+	{
+		level->setTilesDirty(
+			rx + x0, y0, rz + z0,
+			rx + x1, y1, rz + z1);
+	}
+
+	// The received server snapshot itself is not a local edit.
 	chunk->unsaved = false;
 
-	chunksLoaded[packet->x * LevelConstants::CHUNK_CACHE_WIDTH + packet->z] = true;
+	const int loadedIndex = packet->x * width + packet->z;
+
+	if (loadedIndex < 0 ||
+		loadedIndex >= static_cast<int>(chunksLoaded.size()))
+	{
+		LOGI("Chunk loaded index out of bounds (%d, %d)\n",
+			packet->x, packet->z);
+		return;
+	}
+
+	// Count each chunk only once.
+	if (!chunksLoaded[loadedIndex])
+	{
+		chunksLoaded[loadedIndex] = true;
+		++loadedChunkCount;
+	}
+
+	// Apply buffered updates as soon as their chunk arrives.
+	// Do not leave them waiting for the entire world to load.
+	for (BlockUpdateList::iterator it = bufferedBlockUpdates.begin();
+		it != bufferedBlockUpdates.end();)
+	{
+		const int updateChunkX =
+			it->x / LevelConstants::CHUNK_WIDTH;
+
+		const int updateChunkZ =
+			it->z / LevelConstants::CHUNK_DEPTH;
+
+		if (updateChunkX == packet->x &&
+			updateChunkZ == packet->z)
+		{
+			const int updateY = static_cast<int>(it->y);
+
+			const int tileId =
+				Tile::transformToValidBlockId(
+					it->blockId,
+					it->x,
+					updateY,
+					it->z);
+
+			if (it->setData)
+			{
+				multiplayerLevel->doSetTileAndData(
+					it->x,
+					updateY,
+					it->z,
+					tileId,
+					it->blockData);
+			}
+			else
+			{
+				multiplayerLevel->doSetTileNoUpdate(
+					it->x,
+					updateY,
+					it->z,
+					tileId);
+			}
+
+			it = bufferedBlockUpdates.erase(it);
+		}
+		else
+		{
+			++it;
+		}
+	}
 
 	if (areAllChunksLoaded())
 	{
-		ReadyPacket packet(ReadyPacket::READY_REQUESTEDCHUNKS);
-		raknetInstance->send(packet);
+		ReadyPacket readyPacket(
+			ReadyPacket::READY_REQUESTEDCHUNKS);
 
-		for (unsigned int i = 0; i < bufferedBlockUpdates.size(); i++)
-		{
-			const SBufferedBlockUpdate& update = bufferedBlockUpdates[i];
-			int tileId = Tile::transformToValidBlockId( update.blockId, update.x, update.y, update.z );
-			if (update.setData)
-				level->setTileAndData(update.x, update.y, update.z, tileId, update.blockData);
-			else
-				level->setTile(update.x, update.y, update.z, tileId);
-		}
-		bufferedBlockUpdates.clear();
+		raknetInstance->send(readyPacket);
 	}
 	else
 	{
@@ -1072,10 +1199,24 @@ void ClientSideNetworkHandler::handle(const RakNet::RakNetGUID& source, Adventur
 
 void ClientSideNetworkHandler::clearChunksLoaded()
 {
-	// Init the chunk positions
-	for (int i = 0; i < NumRequestChunks; ++i) {
-		requestNextChunkIndexList[i].x = i / LevelConstants::CHUNK_WIDTH;
-		requestNextChunkIndexList[i].y = i % LevelConstants::CHUNK_WIDTH;
-		chunksLoaded[i] = false;
+	const int width = LevelConstants::CHUNK_CACHE_WIDTH;
+
+	NumRequestChunks = width * width;
+
+	requestNextChunkPosition = 0;
+	requestNextChunkIndex = 0;
+	loadedChunkCount = 0;
+
+	requestNextChunkIndexList.resize(NumRequestChunks);
+	chunksLoaded.assign(NumRequestChunks, false);
+
+	// Enumerate every chunk in the actual world.
+	for (int i = 0; i < NumRequestChunks; ++i)
+	{
+		requestNextChunkIndexList[i].x = i / width;
+		requestNextChunkIndexList[i].y = i % width;
 	}
+
+	// Updates from an earlier connection must not leak into a new one.
+	bufferedBlockUpdates.clear();
 }
