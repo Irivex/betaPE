@@ -1,5 +1,6 @@
 #include "RegionFile.h"
 #include "../../../platform/log.h"
+#include <climits>
 
 const int SECTOR_BYTES = 4096;
 const int SECTOR_INTS = SECTOR_BYTES / 4;
@@ -94,39 +95,99 @@ void RegionFile::close()
 	}
 }
 
-bool RegionFile::readChunk(int x, int z, RakNet::BitStream** destChunkData)
+bool RegionFile::readChunk(
+	int x,
+	int z,
+	RakNet::BitStream** destChunkData)
 {
-	int offset = offsets[x + z * SECTOR_COLS];
-
-	if (offset == 0)
+	// Coordinates must be local to this 32 x 32 region.
+	if (!file || !destChunkData ||
+		x < 0 || x >= SECTOR_COLS ||
+		z < 0 || z >= SECTOR_COLS)
 	{
-		// not written to file yet
+		LOGI("Invalid RegionFile::readChunk coordinates (%d, %d)\n",
+			x, z);
 		return false;
 	}
 
-	int sectorNum = offset >> 8;
+	*destChunkData = NULL;
 
-	fseek(file, sectorNum * SECTOR_BYTES, SEEK_SET);
-	int length = 0;
-	fread(&length, sizeof(int), 1, file);
+	const int index = x + z * SECTOR_COLS;
+	const int offset = offsets[index];
 
-	assert(length < ((offset & 0xff) * SECTOR_BYTES));
-	length -= sizeof(int);
-	if (length <= 0) {
-		//*destChunkData = NULL;
-		//return false;
+	// This chunk has never been written to this region.
+	if (offset == 0)
+		return false;
+
+	const int sectorNum = offset >> 8;
+	const int sectorCount = offset & 0xff;
+
+	// Sector zero contains the region index; the chunk must
+	// occupy at least one other sector.
+	if (sectorNum <= 0 ||
+		sectorCount <= 0 ||
+		sectorNum > LONG_MAX / SECTOR_BYTES)
+	{
+		LOGI("Invalid region offset for chunk (%d, %d)\n", x, z);
+		return false;
 	}
 
-	unsigned char* data = new unsigned char[length];
-	logAssert(fread(data, 1, length, file), length);
-	*destChunkData = new RakNet::BitStream(data, length, false);
-	//delete [] data;
+	const long sectorOffset =
+		static_cast<long>(sectorNum) * SECTOR_BYTES;
+
+	if (fseek(file, sectorOffset, SEEK_SET) != 0) {
+		LOGI("Failed to seek to chunk (%d, %d)\n", x, z);
+		return false;
+	}
+
+	int storedLength = 0;
+
+	if (fread(&storedLength, sizeof(int), 1, file) != 1) {
+		LOGI("Failed to read chunk length (%d, %d)\n", x, z);
+		return false;
+	}
+
+	const int sectorCapacity = sectorCount * SECTOR_BYTES;
+
+	// storedLength includes the four-byte length header.
+	// A valid chunk must fit inside its allocated sectors.
+	if (storedLength <= static_cast<int>(sizeof(int)) ||
+		storedLength >= sectorCapacity)
+	{
+		LOGI("Invalid chunk length %d at (%d, %d)\n",
+			storedLength, x, z);
+		return false;
+	}
+
+	const int dataLength = storedLength - sizeof(int);
+
+	unsigned char* data = new unsigned char[dataLength];
+
+	if (fread(data, 1, dataLength, file) !=
+		static_cast<size_t>(dataLength))
+	{
+		LOGI("Incomplete chunk data at (%d, %d)\n", x, z);
+		delete[] data;
+		return false;
+	}
+
+	*destChunkData =
+		new RakNet::BitStream(data, dataLength, false);
 
 	return true;
 }
 
 bool RegionFile::writeChunk(int x, int z, RakNet::BitStream& chunkData)
 {
+	if (!file ||
+		x < 0 || x >= SECTOR_COLS ||
+		z < 0 || z >= SECTOR_COLS)
+	{
+		LOGI("Invalid RegionFile::writeChunk coordinates (%d, %d)\n",
+			x, z);
+		return false;
+	}
+
 	int size = chunkData.GetNumberOfBytesUsed() + sizeof(int);
 
 	int offset = offsets[x + z * SECTOR_COLS];

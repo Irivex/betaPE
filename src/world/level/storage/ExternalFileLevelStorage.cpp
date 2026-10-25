@@ -78,16 +78,19 @@ public:
 };
 
 
-ExternalFileLevelStorage::ExternalFileLevelStorage(const std::string& levelId, const std::string& fullPath)
-:	levelId(levelId),
+ExternalFileLevelStorage::ExternalFileLevelStorage(
+	const std::string& levelId,
+	const std::string& fullPath)
+	: levelId(levelId),
 	levelPath(fullPath),
 	loadedLevelData(NULL),
-	regionFile(NULL),
+	regionFiles(),
 	entitiesFile(NULL),
-	tickCount(0),
-	lastSavedEntitiesTick(-999999),
 	level(NULL),
-	loadedStorageVersion(SharedConstants::StorageVersion)
+	tickCount(0),
+	loadedStorageVersion(SharedConstants::StorageVersion),
+	unsavedChunkList(),
+	lastSavedEntitiesTick(-999999)
 {
 	createFolderIfNotExists(levelPath.c_str());
 
@@ -109,8 +112,96 @@ ExternalFileLevelStorage::ExternalFileLevelStorage(const std::string& levelId, c
 
 ExternalFileLevelStorage::~ExternalFileLevelStorage()
 {
-	delete regionFile;
+	for (std::map<std::pair<int, int>, RegionFile*>::iterator it =
+		regionFiles.begin();
+		it != regionFiles.end(); ++it)
+	{
+		delete it->second;
+	}
+
+	regionFiles.clear();
+
+	delete entitiesFile;
 	delete loadedLevelData;
+}
+
+RegionFile* ExternalFileLevelStorage::getRegionFile(
+	int chunkX,
+	int chunkZ,
+	int& localX,
+	int& localZ,
+	bool createIfMissing)
+{
+	const int REGION_SIZE = 32;
+
+	// Convert global chunk coordinates to region + local coordinates.
+	// The correction also handles negative coordinates if needed later.
+	int regionX = chunkX / REGION_SIZE;
+	int regionZ = chunkZ / REGION_SIZE;
+
+	localX = chunkX % REGION_SIZE;
+	localZ = chunkZ % REGION_SIZE;
+
+	if (localX < 0) {
+		localX += REGION_SIZE;
+		--regionX;
+	}
+
+	if (localZ < 0) {
+		localZ += REGION_SIZE;
+		--regionZ;
+	}
+
+	const std::pair<int, int> key(regionX, regionZ);
+
+	// Reuse an already-open region file.
+	std::map<std::pair<int, int>, RegionFile*>::iterator it =
+		regionFiles.find(key);
+
+	if (it != regionFiles.end())
+		return it->second;
+
+	// Preserve the old save format for region (0, 0):
+	// <world folder>/chunks.dat
+	std::string regionPath = levelPath;
+
+	// Other regions use their own folders:
+	// <world folder>/region_X_Z/chunks.dat
+	if (regionX != 0 || regionZ != 0) {
+		regionPath += "/region_" +
+			std::to_string(regionX) + "_" +
+			std::to_string(regionZ);
+
+		// Only create new region directories when saving.
+		if (createIfMissing &&
+			!createFolderIfNotExists(regionPath.c_str()))
+		{
+			LOGI("Could not create region folder: %s\n",
+				regionPath.c_str());
+			return NULL;
+		}
+	}
+
+	const std::string regionFilename = regionPath + "/chunks.dat";
+
+	// Reading a nonexistent region should mean "no saved chunk",
+	// not creating a blank file for every region we visit.
+	if (!createIfMissing && !exists(regionFilename.c_str()))
+		return NULL;
+
+	RegionFile* region = new RegionFile(regionPath);
+
+	if (!region->open()) {
+		LOGI("Could not open region (%d, %d): %s\n",
+			regionX, regionZ, regionFilename.c_str());
+
+		delete region;
+		return NULL;
+	}
+
+	regionFiles.insert(std::make_pair(key, region));
+
+	return region;
 }
 
 void ExternalFileLevelStorage::saveLevelData(LevelData& levelData, std::vector<Player*>* players) {
@@ -402,52 +493,83 @@ void ExternalFileLevelStorage::tick()
 
 void ExternalFileLevelStorage::save(Level* level, LevelChunk* levelChunk)
 {
-	if (!regionFile)
-	{
-		regionFile = new RegionFile(levelPath);
-		if (!regionFile->open())
-		{
-			delete regionFile;
-			regionFile = NULL;
-			return;
-		}
+	if (!levelChunk)
+		return;
+
+	int localX = 0;
+	int localZ = 0;
+
+	RegionFile* region = getRegionFile(
+		levelChunk->x,
+		levelChunk->z,
+		localX,
+		localZ,
+		true
+	);
+
+	if (!region) {
+		levelChunk->unsaved = true;
+		LOGI("Failed to get region for chunk (%d, %d)\n",
+			levelChunk->x, levelChunk->z);
+		return;
 	}
 
-	// Write chunk
+	// Preserve betaPE's existing chunk data layout.
 	RakNet::BitStream chunkData;
-	chunkData.Write((const char*)levelChunk->getBlockData(), LevelConstants::CHUNK_BLOCK_COUNT);
-	chunkData.Write((const char*)levelChunk->data.data, LevelConstants::CHUNK_BLOCK_COUNT / 2);
 
-	chunkData.Write((const char*)levelChunk->skyLight.data, LevelConstants::CHUNK_BLOCK_COUNT / 2);
-	chunkData.Write((const char*)levelChunk->blockLight.data, LevelConstants::CHUNK_BLOCK_COUNT / 2);
+	chunkData.Write(
+		(const char*)levelChunk->getBlockData(),
+		LevelConstants::CHUNK_BLOCK_COUNT
+	);
 
-	chunkData.Write((const char*)levelChunk->updateMap, LevelConstants::CHUNK_COLUMNS);
+	chunkData.Write(
+		(const char*)levelChunk->data.data,
+		LevelConstants::CHUNK_BLOCK_COUNT / 2
+	);
 
-	regionFile->writeChunk(levelChunk->x, levelChunk->z, chunkData);
+	chunkData.Write(
+		(const char*)levelChunk->skyLight.data,
+		LevelConstants::CHUNK_BLOCK_COUNT / 2
+	);
 
-	// Write entities
+	chunkData.Write(
+		(const char*)levelChunk->blockLight.data,
+		LevelConstants::CHUNK_BLOCK_COUNT / 2
+	);
 
-	//LOGI("Saved chunk (%d, %d)\n", levelChunk->x, levelChunk->z);
+	chunkData.Write(
+		(const char*)levelChunk->updateMap,
+		LevelConstants::CHUNK_COLUMNS
+	);
 
+	if (!region->writeChunk(localX, localZ, chunkData)) {
+		levelChunk->unsaved = true;
+
+		LOGI("Failed to write chunk (%d, %d), local (%d, %d)\n",
+			levelChunk->x, levelChunk->z,
+			localX, localZ);
+	}
 }
 
 LevelChunk* ExternalFileLevelStorage::load(Level* level, int x, int z)
 {
-	if (!regionFile)
-	{
-		regionFile = new RegionFile(levelPath);
-		if (!regionFile->open())
-		{
-			delete regionFile;
-			regionFile = NULL;
-			return NULL;
-		}
-	}
+	int localX = 0;
+	int localZ = 0;
+
+	RegionFile* region = getRegionFile(
+		x,
+		z,
+		localX,
+		localZ,
+		false
+	);
+
+	if (!region)
+		return NULL;
 
 	RakNet::BitStream* chunkData = NULL;
-	if (!regionFile->readChunk(x, z, &chunkData))
-	{
-		//LOGI("Failed to read data for %d, %d\n", x, z);
+
+	if (!region->readChunk(localX, localZ, &chunkData)) {
 		return NULL;
 	}
 

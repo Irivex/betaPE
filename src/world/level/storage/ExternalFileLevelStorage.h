@@ -7,6 +7,8 @@
 
 #include <vector>
 #include <list>
+#include <map>
+#include <utility>
 
 //#include "com/mojang/nbt/CompoundTag.h"
 #include "LevelStorage.h"
@@ -86,7 +88,10 @@ private:
 	std::string levelId;
 	std::string levelPath;
 	LevelData* loadedLevelData;
-	RegionFile* regionFile;
+
+	// Key: (regionX, regionZ). Each region owns one RegionFile.
+	std::map<std::pair<int, int>, RegionFile*> regionFiles;
+
 	RegionFile* entitiesFile;
 
 	Level* level;
@@ -94,7 +99,16 @@ private:
 	int loadedStorageVersion;
 	UnsavedChunkList unsavedChunkList;
 	int lastSavedEntitiesTick;
+
+	RegionFile* getRegionFile(
+		int chunkX,
+		int chunkZ,
+		int& localX,
+		int& localZ,
+		bool createIfMissing
+	);
 };
+
 
 #endif /*NET_MINECRAFT_WORLD_LEVEL_STORAGE__ExternalFileLevelStorage_H__*/
 
