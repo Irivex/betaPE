@@ -515,13 +515,11 @@ bool Tile::shouldRenderFace( LevelSource* level, int x, int y, int z, int face )
 	// For fixed size worlds //@todo: external constants rather than magic numbers
 	// @fixme @ahtung temp fix
 
-	auto xz = LevelConstants::CHUNK_CACHE_WIDTH == 16 ? 256 : 
-	LevelConstants::CHUNK_CACHE_WIDTH * LevelConstants::CHUNK_CACHE_WIDTH / (LevelConstants::CHUNK_CACHE_WIDTH * LevelConstants::CHUNK_CACHE_WIDTH / 256 / 2);
-
-	if (face == 2 && z == -1)  return false;
-	if (face == 3 && z == xz) return false;
-	if (face == 4 && x == -1)  return false;
-	if (face == 5 && x == xz) return false;
+// Finite world boundaries: hide faces only outside actual world edges.
+	if (face == 2 && z == -1) return false;
+	if (face == 3 && z == LevelConstants::LEVEL_DEPTH) return false;
+	if (face == 4 && x == -1) return false;
+	if (face == 5 && x == LevelConstants::LEVEL_WIDTH) return false;
 	// Common
 	if (face == 0 && yy0 > 0) return true;
 	if (face == 1 && yy1 < 1) return true;

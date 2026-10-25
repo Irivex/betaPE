@@ -92,6 +92,7 @@ public:
         int xs = x & (LevelConstants::CHUNK_CACHE_WIDTH - 1);
         int zs = z & (LevelConstants::CHUNK_CACHE_WIDTH - 1);
         int slot = xs + zs * LevelConstants::CHUNK_CACHE_WIDTH;
+        bool chunkWasCreated = false;
         if (!hasChunk(x, z)) {
             if (chunks[slot] != NULL) {
                 chunks[slot]->unload();
@@ -112,6 +113,8 @@ public:
 				updateLights = true;
             }
             chunks[slot] = newChunk;
+            chunkWasCreated = (newChunk != NULL && newChunk != emptyChunk);
+
             newChunk->lightLava();
 
 			if (updateLights)
@@ -145,10 +148,22 @@ public:
         zLast = z;
         last = chunks[slot];
 
-		//sw.stop();
-		//sw.printEvery(500000, "ChunkCache::load: ");
+        if (chunkWasCreated && level != NULL) {
+            const int x0 = x * LevelConstants::CHUNK_WIDTH;
+            const int z0 = z * LevelConstants::CHUNK_DEPTH;
+
+            level->setTilesDirty(
+                x0, 0, z0,
+                x0 + LevelConstants::CHUNK_WIDTH - 1,
+                LevelConstants::LEVEL_HEIGHT - 1,
+                z0 + LevelConstants::CHUNK_DEPTH - 1
+            );
+        }
 
         return chunks[slot];
+
+		//sw.stop();
+		//sw.printEvery(500000, "ChunkCache::load: ");;
     }
 
 	Biome::MobList getMobsAt(const MobCategory& mobCategory, int x, int y, int z) {

@@ -171,6 +171,11 @@ void LevelRenderer::setLevel( Level* level )
 		level->addListener(this);
 		allChanged();
 	}
+	else {
+		// Leaving a world: release renderer chunks before
+		// the old Level and its chunk source are destroyed.
+		deleteChunks();
+	}
 }
 
 void LevelRenderer::allChanged()
@@ -267,18 +272,27 @@ void LevelRenderer::allChanged()
 
 void LevelRenderer::deleteChunks()
 {
-	for (int z = 0; z < zChunks; ++z)
-		for (int y = 0; y < yChunks; ++y)
-			for (int x = 0; x < xChunks; ++x) {
-				int c = getLinearCoord(x, y, z);
-				delete chunks[c];
-			}
+	// Delete renderer chunks only while the array exists.
+	if (chunks != NULL) {
+		for (int i = 0; i < chunksLength; ++i) {
+			delete chunks[i];
+		}
+	}
 
-			delete[] chunks;
-			chunks = NULL;
+	delete[] chunks;
+	chunks = NULL;
 
-			delete[] sortedChunks;
-			sortedChunks = NULL;
+	delete[] sortedChunks;
+	sortedChunks = NULL;
+
+	// These may contain pointers to renderer chunks we just deleted.
+	dirtyChunks.clear();
+
+	// Prevent rendering loops from accessing a deleted array.
+	chunksLength = 0;
+	xChunks = 0;
+	yChunks = 0;
+	zChunks = 0;
 }
 
 void LevelRenderer::resortChunks( int xc, int yc, int zc )
