@@ -6,6 +6,7 @@
 #include "ChunkSource.h"
 #include "storage/ChunkStorage.h"
 #include "EmptyLevelChunk.h"
+#include <vector>
 #include "../Level.h"
 #include "../LevelConstants.h"
 
@@ -43,6 +44,20 @@ public:
 			}
 		}
 	}
+
+    void getLoadedChunks(std::vector<LevelChunk*>& out)
+    {
+        const int count =
+            LevelConstants::CHUNK_CACHE_WIDTH *
+            LevelConstants::CHUNK_CACHE_WIDTH;
+
+        for (int i = 0; i < count; ++i) {
+            LevelChunk* chunk = chunks[i];
+
+            if (chunk != NULL && chunk != emptyChunk)
+                out.push_back(chunk);
+        }
+    }
 
     bool fits(int x, int z) {
         return (x >= 0 && z >= 0 && x < LevelConstants::CHUNK_CACHE_WIDTH && z < LevelConstants::CHUNK_CACHE_WIDTH);
@@ -202,18 +217,28 @@ public:
 		return ss.str();
     }
 	
-	void saveAll(bool onlyUnsaved) {
-		if (storage != NULL) {
-			std::vector<LevelChunk*> chunks;
-			for (int z = 0; z < LevelConstants::CHUNK_CACHE_WIDTH; ++z)
-			for (int x = 0; x < LevelConstants::CHUNK_CACHE_WIDTH; ++x) {
-				LevelChunk* chunk = level->getChunk(x, z);
-				if (!onlyUnsaved || chunk->shouldSave(false))
-					chunks.push_back( chunk );
-			}
-			storage->saveAll(level, chunks);
-		}
-	}
+    void saveAll(bool onlyUnsaved)
+    {
+        if (storage == NULL)
+            return;
+
+        std::vector<LevelChunk*> loadedChunks;
+        getLoadedChunks(loadedChunks);
+
+        std::vector<LevelChunk*> chunksToSave;
+
+        for (std::vector<LevelChunk*>::iterator it =
+            loadedChunks.begin();
+            it != loadedChunks.end(); ++it)
+        {
+            LevelChunk* chunk = *it;
+
+            if (!onlyUnsaved || chunk->shouldSave(false))
+                chunksToSave.push_back(chunk);
+        }
+
+        storage->saveAll(level, chunksToSave);
+    }
 private:
     LevelChunk* load(int x, int z) {
         if (storage == NULL) return emptyChunk;

@@ -8,6 +8,8 @@
 #include "world/item/ItemInstance.h"
 #include <string>
 #include <cstdlib>
+#include <vector>
+#include "../world/level/chunk/LevelChunk.h"
 
 
 #if defined(APPLE_DEMO_PROMOTION)
@@ -362,61 +364,53 @@ void Minecraft::leaveGame(bool renameLevel /*=false*/)
 #endif
 }
 
-void Minecraft::prepareLevel(const std::string& title) {
+void Minecraft::prepareLevel(const std::string& title)
+{
 	LOGI("status: 1\n");
 	progressStageStatusId = 1;
 
-	Stopwatch A, B, C, D;
-	A.start();
+	const bool isNewLevel = level->isNew();
 
-	Stopwatch L;
-
-	// Dont update lights if we load the level (ok, actually just with leveldata version=1.+(?))
-	if (!level->isNew())
+	if (!isNewLevel)
 		level->setUpdateLights(false);
 
-	int Max = LevelConstants::CHUNK_CACHE_WIDTH * LevelConstants::CHUNK_CACHE_WIDTH;
-	int pp = 0;
-	for (int x = 8; x < (LevelConstants::CHUNK_CACHE_WIDTH * LevelConstants::CHUNK_WIDTH); x += LevelConstants::CHUNK_WIDTH) {
-        for (int z = 8; z < (LevelConstants::CHUNK_CACHE_WIDTH * LevelConstants::CHUNK_WIDTH); z += LevelConstants::CHUNK_WIDTH) {
-            progressStagePercentage = 100 * pp++ / Max;
-            //printf("level generation progress %d\n", progressStagePercentage);
-			B.start();
-			level->getTile(x, 64, z);
-			B.stop();
-			L.start();
-			if (level->isNew())
-				while (level->updateLights())
-					;
-			L.stop();
-		}
-	}
-	A.stop();
-	level->setUpdateLights(true);
+	LOGI("status: 3\n");
+	progressStageStatusId = 3;
 
-	C.start();
-	for (int x = 0; x < LevelConstants::CHUNK_CACHE_WIDTH; x++)
-	{
-		for (int z = 0; z < LevelConstants::CHUNK_CACHE_WIDTH; z++)
+	if (isNewLevel) {
+		// Generate terrain as spawn selection requests chunks.
+		level->setUpdateLights(true);
+		level->setInitialSpawn();
+
+		// Process lighting updates for chunks generated near spawn.
+		while (level->updateLights())
+			;
+
+		// Clear generation updates for chunks already loaded.
+		std::vector<LevelChunk*> loadedChunks;
+
+		if (level->getChunkSource())
+			level->getChunkSource()->getLoadedChunks(loadedChunks);
+
+		for (std::vector<LevelChunk*>::iterator it =
+			loadedChunks.begin();
+			it != loadedChunks.end(); ++it)
 		{
-			LevelChunk* chunk = level->getChunk(x, z);
-			if (chunk && !chunk->createdFromSave)
-			{
+			LevelChunk* chunk = *it;
+
+			if (chunk && !chunk->createdFromSave) {
 				chunk->unsaved = false;
 				chunk->clearUpdateMap();
 			}
 		}
-	}
-	C.stop();
 
-	LOGI("status: 3\n");
-	progressStageStatusId = 3;
-	if (level->isNew()) {
-		level->setInitialSpawn(); // @note: should obviously be called from Level itself
 		level->saveLevelData();
 		level->getChunkSource()->saveAll(false);
 		level->saveGame();
-	} else {
+	}
+	else {
+		// Re-enable lighting before loading chunks during gameplay.
+		level->setUpdateLights(true);
 		level->saveLevelData();
 		level->loadEntities();
 	}
@@ -425,15 +419,8 @@ void Minecraft::prepareLevel(const std::string& title) {
 	progressStageStatusId = 2;
 	LOGI("status: 2\n");
 
-	D.start();
 	level->prepare();
-	D.stop();
 
-	A.print("Generate level: ");
-	L.print(" - light: ");
-	B.print(" - getTl: ");
-	C.print(" - clear: ");
-	D.print(" - prepr: ");
 	progressStageStatusId = 0;
 }
 

@@ -7,6 +7,7 @@
 #include "RegionFile.h"
 #include "ExternalFileLevelStorage.h"
 #include "FolderMethods.h"
+#include "../chunk/ChunkSource.h"
 #include "../chunk/LevelChunk.h"
 #include "../Level.h"
 #include "../LevelConstants.h"
@@ -449,44 +450,54 @@ bool ExternalFileLevelStorage::readPlayerData(const std::string& filename, Level
 void ExternalFileLevelStorage::tick()
 {
 	tickCount++;
+
 	if ((tickCount % 1000) == 0 && level) {
 		LOGI("Saving level...\n");
 
-		// look for chunks that needs to be saved
-		for (int z = 0; z < LevelConstants::CHUNK_CACHE_WIDTH; z++)
+		std::vector<LevelChunk*> loadedChunks;
+
+		if (level->getChunkSource())
+			level->getChunkSource()->getLoadedChunks(loadedChunks);
+
+		for (std::vector<LevelChunk*>::iterator it =
+			loadedChunks.begin();
+			it != loadedChunks.end(); ++it)
 		{
-			for (int x = 0; x < LevelConstants::CHUNK_CACHE_WIDTH; x++)
-			{
-				LevelChunk* chunk = level->getChunk(x, z);
-				if (chunk && chunk->unsaved)
-				{
-					int pos = x + z * LevelConstants::CHUNK_CACHE_WIDTH;
-					UnsavedChunkList::iterator prev = unsavedChunkList.begin();
-					for ( ; prev != unsavedChunkList.end(); ++prev)
-					{
-						if ((*prev).pos == pos)
-						{
-							// the chunk has been modified again, so update its time
-							(*prev).addedToList = RakNet::GetTimeMS();
-							break;
-						}
-					}
-					if (prev == unsavedChunkList.end())
-					{
-						UnsavedLevelChunk unsaved;
-						unsaved.pos = pos;
-						unsaved.addedToList = RakNet::GetTimeMS();
-						unsaved.chunk = chunk;
-						unsavedChunkList.push_back(unsaved);
-					}
-					chunk->unsaved = false; // not actually saved, but in our working list at least
+			LevelChunk* chunk = *it;
+
+			if (!chunk || !chunk->unsaved)
+				continue;
+
+			int pos = chunk->x +
+				chunk->z * LevelConstants::CHUNK_CACHE_WIDTH;
+
+			UnsavedChunkList::iterator prev =
+				unsavedChunkList.begin();
+
+			for (; prev != unsavedChunkList.end(); ++prev) {
+				if (prev->pos == pos) {
+					prev->addedToList = RakNet::GetTimeMS();
+					break;
 				}
 			}
+
+			if (prev == unsavedChunkList.end()) {
+				UnsavedLevelChunk unsaved;
+				unsaved.pos = pos;
+				unsaved.addedToList = RakNet::GetTimeMS();
+				unsaved.chunk = chunk;
+				unsavedChunkList.push_back(unsaved);
+			}
+
+			// This chunk is queued for saving.
+			chunk->unsaved = false;
 		}
 
-        savePendingUnsavedChunks(2);
+		savePendingUnsavedChunks(2);
 	}
-	if (tickCount - lastSavedEntitiesTick > (60 * SharedConstants::TicksPerSecond)) {
+
+	if (tickCount - lastSavedEntitiesTick >
+		(60 * SharedConstants::TicksPerSecond)) {
 		saveEntities(level, NULL);
 	}
 }

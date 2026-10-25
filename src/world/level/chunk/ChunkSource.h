@@ -4,6 +4,7 @@
 //package net.minecraft.world.level.chunk;
 
 #include <string>
+#include <vector>
 #include "../biome/Biome.h"
 
 class ProgressListener;
@@ -34,6 +35,8 @@ public:
 
     virtual bool shouldSave() = 0;
 	virtual void saveAll(bool onlyUnsaved) {}
+
+    virtual void getLoadedChunks(std::vector<LevelChunk*>& out) {}
 
 	virtual Biome::MobList getMobsAt(const MobCategory& mobCategory, int x, int y, int z) = 0;
 
