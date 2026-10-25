@@ -15,7 +15,7 @@ public:
     virtual ~SimpleChooseLevelScreen();
 
     int worldSizeIndex = 1; // default to index 1 (512x)
-    int worldSizes[4] = { 256, 512, 1024, 3024 };
+    int worldSizes[4] = { 256, 512, 1024, 2048 };
 
     void init();
     void setupPositions();
