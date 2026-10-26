@@ -502,14 +502,30 @@ void TouchscreenInput_TestFps::tick(Player* player)
 
     _forward = tmpForward;
 
-    // Toggle crouch on the initial touch, not continuously while held.
+    // Crouch requires two separate taps within 7 ticks (~0.35 seconds).
+    // A single tap or holding the button does not toggle crouch.
     const bool crouchButtonDown = isButtonDown(AREA_DPAD_C);
 
-    if (!player->abilities.flying &&
-        crouchButtonDown &&
-        !_crouchButtonWasDown)
+    if (_sneakTapTime > 0.0f)
+        _sneakTapTime -= 1.0f;
+
+    if (player->abilities.flying)
     {
-        _crouchToggled = !_crouchToggled;
+        // Never let crouch taps interfere with flight controls.
+        _sneakTapTime = 0.0f;
+    }
+    else if (crouchButtonDown && !_crouchButtonWasDown)
+    {
+        if (_sneakTapTime > 0.0f)
+        {
+            _crouchToggled = !_crouchToggled;
+            _sneakTapTime = 0.0f;
+        }
+        else
+        {
+            // Wait for a second, distinct tap.
+            _sneakTapTime = 7.0f;
+        }
     }
 
     _crouchButtonWasDown = crouchButtonDown;
