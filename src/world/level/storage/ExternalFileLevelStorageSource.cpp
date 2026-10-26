@@ -108,13 +108,15 @@ LevelStorage* ExternalFileLevelStorageSource::selectLevel(const std::string& lev
 	return new ExternalFileLevelStorage(levelId, getFullPath(levelId));
 }
 
-void ExternalFileLevelStorageSource::deleteLevel( const std::string& levelId )
+void ExternalFileLevelStorageSource::deleteLevel(
+	const std::string& levelId)
 {
-	std::string path = getFullPath(levelId);
-	if (!DeleteDirectory(path)) { // If we couldn't delete whole folder, try to remove chunks..
-		remove((path + "/chunks.dat").c_str());
-		remove((path + "/player.dat").c_str());
-		remove((path + "/level.dat").c_str());
+	const std::string path = getFullPath(levelId);
+
+	if (!DeleteDirectory(path)) {
+		LOGI(
+			"Failed to completely delete world directory: %s\n",
+			path.c_str());
 	}
 }
 

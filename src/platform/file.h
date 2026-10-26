@@ -37,30 +37,81 @@ bool DeleteDirectory(const std::string& dir, bool noRecycleBin /*true*/)
     return (ret == 0);
 }
 #else
-	#include <cstdio>
-	#include <dirent.h>
+#include <cstdio>
+#include <cstring>
+#include <dirent.h>
+#include <string>
+#include <sys/stat.h>
+#include <unistd.h>
 
-bool DeleteDirectory(const std::string& d, bool noRecycleBin /*true*/)
+// Recursively delete everything inside a directory.
+static bool deleteDirectoryContents(const std::string& folder)
 {
-	const char* folder = d.c_str();
+    DIR* dir = opendir(folder.c_str());
+    if (!dir)
+        return false;
 
-	const size_t CMAX = 1024;
-	char fullPath[CMAX];
-	DIR* dir = opendir(folder);
-	if (!dir)
-		return false;
+    bool success = true;
+    struct dirent* entry;
 
-	struct dirent *entry;
-	while ((entry = readdir(dir))) {
-		if (strcmp(".", entry->d_name) && strcmp("..", entry->d_name)) {
-			snprintf(fullPath, CMAX, "%s/%s", folder, entry->d_name);
-			remove(fullPath);
-		}
-	}
+    while ((entry = readdir(dir)) != NULL) {
+        if (std::strcmp(entry->d_name, ".") == 0 ||
+            std::strcmp(entry->d_name, "..") == 0) {
+            continue;
+        }
 
-	closedir(dir);
+        std::string childPath = folder;
 
-	return remove(folder) == 0;
+        if (!childPath.empty() && childPath.back() != '/')
+            childPath += '/';
+
+        childPath += entry->d_name;
+
+        struct stat info;
+
+        // lstat checks the entry itself without following symlinks.
+        if (lstat(childPath.c_str(), &info) != 0) {
+            success = false;
+            continue;
+        }
+
+        if (S_ISDIR(info.st_mode)) {
+            // Empty the subdirectory first, then remove it.
+            if (!deleteDirectoryContents(childPath))
+                success = false;
+
+            if (rmdir(childPath.c_str()) != 0)
+                success = false;
+        }
+        else {
+            // Delete regular files and symlinks.
+            if (unlink(childPath.c_str()) != 0)
+                success = false;
+        }
+    }
+
+    if (closedir(dir) != 0)
+        success = false;
+
+    return success;
+}
+
+bool DeleteDirectory(const std::string& d, bool /*noRecycleBin*/)
+{
+    struct stat info;
+
+    if (lstat(d.c_str(), &info) != 0)
+        return false;
+
+    // Handle a file or symlink passed to this function.
+    if (!S_ISDIR(info.st_mode))
+        return unlink(d.c_str()) == 0;
+
+    // Delete all contents before removing the world folder itself.
+    if (!deleteDirectoryContents(d))
+        return false;
+
+    return rmdir(d.c_str()) == 0;
 }
 
 #endif /*(ELSE) WIN32*/
