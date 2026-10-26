@@ -253,6 +253,11 @@ void Inventory::setupDefault() {
 #endif
 		addItem(new ItemInstance(Item::bow));
 		addItem(new ItemInstance(Item::sign));
+
+		// Buckets
+		addItem(new ItemInstance(Item::bucket_empty));
+		addItem(new ItemInstance(Item::bucket_water));
+		addItem(new ItemInstance(Item::bucket_lava));
 	} else {
 #if defined(WIN32)
 		// Survival
@@ -281,8 +286,15 @@ void Inventory::setupDefault() {
 			continue;
 		}
 
-		if (item && _isCreative)
+		if (item && _isCreative) {
 			item->count = 5;
+
+			if (item->id == Item::bucket_empty->id ||
+				item->id == Item::bucket_water->id ||
+				item->id == Item::bucket_lava->id) {
+				item->count = 1;
+			}
+		}
 	}
 
 	for (int i = 0; i < MAX_SELECTION_SIZE; ++i) {

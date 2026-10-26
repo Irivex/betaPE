@@ -297,11 +297,11 @@ Recipes::Recipes()
 
 	//	definition('#', Tile::wood));
 
-	//addShapedRecipe(ItemInstance(Item::bucket_empty, 1), //
-	//	"# #", //
-	//	" # ", //
+	addShapedRecipe(ItemInstance(Item::bucket_empty, 1), //
+		"# #", //
+		" # ", //
 
-	//	definition('#', Item::ironIngot));
+		definition('#', Item::ironIngot));
 
 	addShapedRecipe(ItemInstance(Item::flintAndSteel, 1), //
 		"A ", //
