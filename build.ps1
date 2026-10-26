@@ -250,7 +250,7 @@ if (-not $NoJava -and -not $NoBuild) {
     Write-Step "Java compile"
 
     New-Dir (Split-Path $rJava -Parent)
-    & "$sdkTools\aapt.exe" package -f -M $manifest -S $res -I $androidJar -J "$apkbuild\gen" -F "$apkbuild\_rgen.apk"
+& "$sdkTools\aapt.exe" package -f -M $manifest -S $res -I $androidJar --custom-package com.mojang.minecraftpe -J "$apkbuild\gen" -F "$apkbuild\_rgen.apk"
     Assert-ExitCode "aapt R.java"
     Remove-Item "$apkbuild\_rgen.apk" -ea SilentlyContinue
 

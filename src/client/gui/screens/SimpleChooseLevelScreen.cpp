@@ -9,6 +9,7 @@
 #include "../../../platform/input/Keyboard.h"
 #include "../../../platform/log.h"
 #include <locale/I18n.h>
+#include <string>
 #include "../../../world/level/LevelSettings.h"
 #include "../../../world/level/LevelConstants.h"
 

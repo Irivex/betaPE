@@ -1,6 +1,7 @@
 #include <cstddef>
 #include <fstream>
 #include <ios>
+#include <string>
 #if !defined(DEMO_MODE) && !defined(APPLE_DEMO_PROMOTION)
 
 #include "LevelData.h"
