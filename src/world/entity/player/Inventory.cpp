@@ -258,6 +258,9 @@ void Inventory::setupDefault() {
 		addItem(new ItemInstance(Item::bucket_empty));
 		addItem(new ItemInstance(Item::bucket_water));
 		addItem(new ItemInstance(Item::bucket_lava));
+
+		addItem(new ItemInstance(Item::apple_gold));
+		addItem(new ItemInstance(Item::apple));
 	} else {
 #if defined(WIN32)
 		// Survival

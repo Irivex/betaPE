@@ -96,7 +96,7 @@ Item* Item::porkChop_raw = NULL;
 Item* Item::porkChop_cooked = NULL;
 Item* Item::painting = NULL;
 
-//Item* Item::apple_gold = NULL;
+Item* Item::apple_gold = NULL;
 
 Item* Item::sign = NULL;
 Item* Item::door_wood = NULL;
@@ -237,7 +237,10 @@ void Item::initItems() {
 	Item::porkChop_raw = (new FoodItem(63, 3, true))->setIcon(7, 5)->setCategory(ItemCategory::FoodArmor)->setDescriptionId("porkchopRaw");
 	Item::porkChop_cooked = (new FoodItem(64, 8, true))->setIcon(8, 5)->setCategory(ItemCategory::FoodArmor)->setDescriptionId("porkchopCooked");
 	Item::painting = (new HangingEntityItem(65, EntityTypes::IdPainting))->setIcon(10, 1)->setCategory(ItemCategory::Decorations)->setDescriptionId("painting");
-	//Item::apple_gold = (new FoodItem(66, 42, false))->setIcon(11, 0)->setCategory(ItemCategory::FoodArmor)->setDescriptionId("appleGold");
+	Item::apple_gold = (new GoldenAppleItem(66))
+		->setIcon(11, 0)
+		->setCategory(ItemCategory::FoodArmor)
+		->setDescriptionId("appleGold");
 	Item::sign = (new SignItem(67))->setIcon(10, 2)->setCategory(ItemCategory::Decorations)->setDescriptionId("sign");
 	Item::door_wood = (new DoorItem(68, Material::wood))->setIcon(11, 2)->setCategory(ItemCategory::Structures)->setDescriptionId("doorWood");
 	Item::bucket_empty = (new BucketItem(69, 0))

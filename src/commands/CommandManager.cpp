@@ -9,6 +9,7 @@
 #include "commands/CommandOp.hpp"
 #include "commands/CommandBan.hpp"
 #include "commands/CommandGimmieItems.hpp"
+#include "commands/CommandGamemode.hpp"
 #include "network/packet/ChatPacket.h"
 #include "network/RakNetInstance.h"
 #include "world/level/Level.h"
@@ -22,6 +23,7 @@ void CommandManager::registerAllCommands() {
     m_commands.push_back(new CommandKick());
     m_commands.push_back(new CommandOp());
     m_commands.push_back(new CommandBan());
+    m_commands.push_back(new CommandGamemode());
     // m_commands.push_back(new CommandGimmieItems());
 }
 
@@ -58,11 +60,14 @@ std::string CommandManager::execute(Minecraft& mc, Player& player, const std::st
 }
 
 Command* CommandManager::getCommand(const std::string& name) {
-    auto it = std::find_if(m_commands.begin(), m_commands.end(), [name](auto& it) -> bool {
-        return it->getName() == name;
-    });
+    auto it = std::find_if(
+        m_commands.begin(),
+        m_commands.end(),
+        [name](auto& command) {
+            return command->getName() == name;
+        });
 
-    if (it == m_commands.end()) {
+    if (it != m_commands.end()) {
         return *it;
     }
 
