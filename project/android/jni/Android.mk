@@ -145,6 +145,7 @@ LOCAL_SRC_FILES := ../../../src/main.cpp \
 ../../../src/commands/CommandHelp.cpp \
 ../../../src/commands/CommandKick.cpp \
 ../../../src/commands/CommandBan.cpp \
+../../../src/commands/CommandGamemode.cpp \
 ../../../src/commands/CommandManager.cpp \
 ../../../src/commands/CommandOp.cpp \
 ../../../src/server/ServerLevel.cpp \
