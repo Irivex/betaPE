@@ -3,6 +3,7 @@
 
 #include "Item.h"
 #include "BedItem.h"
+#include "BucketItem.h"
 #include "CameraItem.h"
 #include "CoalItem.h"
 #include "DoorItem.h"
