@@ -824,5 +824,13 @@ void TouchscreenInput_TestFps::rebuild()
             (float)imageSize);
     }
 
+    // Draw the pause and chat buttons when in-game.
+    if (!_minecraft->screen) {
+        t.colorABGR(0xFFFFFFFF);
+
+        drawRectangleArea(t, aPause, 200, 64, 18.0f);
+        drawRectangleArea(t, aChat, 200, 82, 18.0f);
+    }
+
     t.draw();
 }
