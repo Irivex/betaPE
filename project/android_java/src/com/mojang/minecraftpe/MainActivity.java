@@ -89,8 +89,9 @@ public class MainActivity extends Activity {
 
         _soundPlayer = new SoundPlayer(this, AudioManager.STREAM_MUSIC);
 
-        checkAndRequestPermissions();
-        initNative();
+        if (checkAndRequestPermissions()) {
+            initNative();
+        }
     }
 
     private void initNative() {

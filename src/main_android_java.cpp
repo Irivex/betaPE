@@ -62,18 +62,86 @@ static void setupExternalPath(JNIEnv* env, MAIN_CLASS* app)
     jmethodID fileMethod = env->GetMethodID(fileClass, "getAbsolutePath", "()Ljava/lang/String;");
     jobject pathString = env->CallObjectMethod(file, fileMethod);
 
-    const char* str = env->GetStringUTFChars((jstring) pathString, NULL);
-    app->externalWorldStoragePath = str;
-    app->externalStoragePath = str;
-    app->externalCacheStoragePath = str;
-    LOGI("%s", str);
+    // Keep settings and other app files in app-specific storage.
+    const char* appPath =
+        env->GetStringUTFChars((jstring)pathString, NULL);
 
-    // same fix as the native entry point: make sure cwd is writable
-    if (chdir(str) != 0) {
-        LOGI("chdir to %s failed: %s", str, strerror(errno));
+    app->externalStoragePath = appPath;
+    app->externalCacheStoragePath = appPath;
+
+    LOGI("App-specific files path: %s", appPath);
+
+    if (chdir(appPath) != 0) {
+        LOGI("chdir to %s failed: %s",
+            appPath, strerror(errno));
     }
 
-    env->ReleaseStringUTFChars((jstring)pathString, str);
+    env->ReleaseStringUTFChars(
+        (jstring)pathString, appPath);
+
+    // Get the public shared-storage root for betaPE worlds.
+    jclass environmentClass =
+        env->FindClass("android/os/Environment");
+
+    if (environmentClass != NULL) {
+        jmethodID getSharedStorage =
+            env->GetStaticMethodID(
+                environmentClass,
+                "getExternalStorageDirectory",
+                "()Ljava/io/File;");
+
+        if (getSharedStorage != NULL) {
+            jobject sharedDirectory =
+                env->CallStaticObjectMethod(
+                    environmentClass, getSharedStorage);
+
+            if (sharedDirectory != NULL) {
+                jclass sharedFileClass =
+                    env->GetObjectClass(sharedDirectory);
+
+                jmethodID getAbsolutePath =
+                    env->GetMethodID(
+                        sharedFileClass,
+                        "getAbsolutePath",
+                        "()Ljava/lang/String;");
+
+                if (getAbsolutePath != NULL) {
+                    jstring sharedPathString =
+                        (jstring)env->CallObjectMethod(
+                            sharedDirectory, getAbsolutePath);
+
+                    if (sharedPathString != NULL) {
+                        const char* sharedPath =
+                            env->GetStringUTFChars(
+                                sharedPathString, NULL);
+
+                        if (sharedPath != NULL) {
+                            app->externalWorldStoragePath =
+                                sharedPath;
+
+                            LOGI(
+                                "betaPE public world root: %s",
+                                sharedPath);
+
+                            env->ReleaseStringUTFChars(
+                                sharedPathString, sharedPath);
+                        }
+
+                        env->DeleteLocalRef(sharedPathString);
+                    }
+                }
+
+                env->DeleteLocalRef(sharedFileClass);
+                env->DeleteLocalRef(sharedDirectory);
+            }
+        }
+
+        env->DeleteLocalRef(environmentClass);
+    }
+
+    if (app->externalWorldStoragePath.empty()) {
+        LOGI("ERROR: betaPE public world path unavailable");
+    }
 }
 
 static void pointerDown(int pointerId, int x, int y) {

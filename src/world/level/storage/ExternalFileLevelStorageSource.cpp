@@ -22,7 +22,7 @@ ExternalFileLevelStorageSource::ExternalFileLevelStorageSource(const std::string
 {
 #ifndef STANDALONE_SERVER
 	const char* p0 = "/games";
-	const char* p1 = "/com.mojang";
+	const char* p1 = "/com.mojang.betape";
 	const char* p2 = "/minecraftWorlds";
 	const char* tree[] = {
 		p0, p1, p2
