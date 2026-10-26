@@ -57,6 +57,8 @@ private:
 	static const float tempScale;
 	static const float downfallScale;
 	static const float noiseScale;
+
+	void ensureBufferCapacity(int size);
 };
 
 #endif /*NET_MINECRAFT_WORLD_LEVEL_BIOME__BiomeSource_H__*/

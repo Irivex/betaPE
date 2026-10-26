@@ -37,53 +37,130 @@ RegionFile::~RegionFile()
 bool RegionFile::open()
 {
 	close();
-
+	sectorFree.clear();
 	memset(offsets, 0, SECTOR_INTS * sizeof(int));
 
-	// attempt to open file
 	file = fopen(filename.c_str(), "r+b");
-	if (file)
+
+	if (!file)
 	{
-		// read offset table
-		logAssert(fread(offsets, sizeof(int), SECTOR_INTS, file), SECTOR_INTS);
-
-		// mark initial sector as blocked
-		sectorFree[0] = false;
-
-		// setup blocked sectors
-		for (int sector = 0; sector < SECTOR_INTS; sector++)
-		{
-			int offset = offsets[sector];
-			if (offset)
-			{
-				int base = offset >> 8;
-				int count = offset & 0xff;
-
-				for (int i = 0; i < count; i++)
-				{
-					sectorFree[base + i] = false;
-				}
-			}
-		}
-	}
-	else
-	{
-		// new world
 		file = fopen(filename.c_str(), "w+b");
+
 		if (!file)
 		{
-			LOGI("Failed to create chunk file %s\n", filename.c_str());
+			LOGI("Failed to create chunk file %s\n",
+				filename.c_str());
 			return false;
 		}
 
-		// write sector header (all zeroes)
-		logAssert(fwrite(offsets, sizeof(int), SECTOR_INTS, file), SECTOR_INTS);
+		if (fwrite(offsets, sizeof(int), SECTOR_INTS, file)
+			!= SECTOR_INTS ||
+			fflush(file) != 0)
+		{
+			LOGI("Failed to write region header: %s\n",
+				filename.c_str());
+			close();
+			return false;
+		}
 
-		// mark initial sector as blocked
 		sectorFree[0] = false;
+		return true;
 	}
 
-	return file != NULL;
+	if (fread(offsets, sizeof(int), SECTOR_INTS, file)
+		!= SECTOR_INTS)
+	{
+		LOGI("Failed to read region header: %s\n",
+			filename.c_str());
+		close();
+		return false;
+	}
+
+	if (fseek(file, 0, SEEK_END) != 0)
+	{
+		LOGI("Failed to seek to end of region file: %s\n",
+			filename.c_str());
+		close();
+		return false;
+	}
+
+	long fileSize = ftell(file);
+
+	if (fileSize < SECTOR_BYTES)
+	{
+		LOGI("Invalid region file size: %s\n",
+			filename.c_str());
+		close();
+		return false;
+	}
+
+	// Recover the sector alignment if a previous write was interrupted.
+	const long remainder = fileSize % SECTOR_BYTES;
+
+	if (remainder != 0)
+	{
+		const int padding =
+			static_cast<int>(SECTOR_BYTES - remainder);
+
+		if (fseek(file, 0, SEEK_END) != 0 ||
+			fwrite(emptyChunk, 1, padding, file)
+			!= static_cast<size_t>(padding) ||
+			fflush(file) != 0)
+		{
+			LOGI("Failed to repair region file alignment: %s\n",
+				filename.c_str());
+			close();
+			return false;
+		}
+
+		fileSize += padding;
+	}
+
+	const long sectorCountLong = fileSize / SECTOR_BYTES;
+
+	if (sectorCountLong > INT_MAX)
+	{
+		LOGI("Region file is too large: %s\n",
+			filename.c_str());
+		close();
+		return false;
+	}
+
+	const int sectorCount =
+		static_cast<int>(sectorCountLong);
+
+	// Mark every existing sector as free first.
+	// Then reserve the header and the sectors referenced by chunks.
+	for (int sector = 0; sector < sectorCount; ++sector)
+		sectorFree[sector] = true;
+
+	sectorFree[0] = false;
+
+	for (int i = 0; i < SECTOR_INTS; ++i)
+	{
+		const int offset = offsets[i];
+
+		if (offset == 0)
+			continue;
+
+		const int base = offset >> 8;
+		const int count = offset & 0xff;
+
+		if (base <= 0 ||
+			count <= 0 ||
+			base >= sectorCount ||
+			count > sectorCount - base)
+		{
+			LOGI("Invalid region offset at entry %d in %s\n",
+				i, filename.c_str());
+			continue;
+		}
+
+		for (int j = 0; j < count; ++j)
+			sectorFree[base + j] = false;
+	}
+
+	return true;
 }
 
 void RegionFile::close()
@@ -177,7 +254,8 @@ bool RegionFile::readChunk(
 	return true;
 }
 
-bool RegionFile::writeChunk(int x, int z, RakNet::BitStream& chunkData)
+bool RegionFile::writeChunk(int x, int z,
+	RakNet::BitStream& chunkData)
 {
 	if (!file ||
 		x < 0 || x >= SECTOR_COLS ||
@@ -188,90 +266,225 @@ bool RegionFile::writeChunk(int x, int z, RakNet::BitStream& chunkData)
 		return false;
 	}
 
-	int size = chunkData.GetNumberOfBytesUsed() + sizeof(int);
+	const int index = x + z * SECTOR_COLS;
+	const int payloadSize =
+		static_cast<int>(chunkData.GetNumberOfBytesUsed());
 
-	int offset = offsets[x + z * SECTOR_COLS];
-	int sectorNum = offset >> 8;
-	int sectorCount = offset & 0xff;
-	int sectorsNeeded = (size / SECTOR_BYTES) + 1;
-
-	if (sectorsNeeded > 256)
+	if (payloadSize <= 0 ||
+		payloadSize > INT_MAX - static_cast<int>(sizeof(int)))
 	{
-		LOGI("ERROR: Chunk is too big to be saved to file\n");
+		LOGI("Invalid chunk payload size: %d\n", payloadSize);
 		return false;
 	}
 
-	if (sectorNum != 0 && sectorCount == sectorsNeeded) {
-		// the sector can be written on top of its old data
-		write(sectorNum, chunkData);
-	}
-	else
+	const int storedSize =
+		payloadSize + static_cast<int>(sizeof(int));
+
+	const int sectorsNeeded =
+		(storedSize + SECTOR_BYTES - 1) / SECTOR_BYTES;
+
+	// The sector count occupies the low 8 bits of an offset.
+	// A count of 256 would wrap to zero.
+	if (sectorsNeeded > 255)
 	{
-		// we need a new location
-
-		// mark old sectors as free
-		for (int i = 0; i < sectorCount; i++)
-		{
-			sectorFree[sectorNum + i] = true;
-		}
-
-		// find an available slot with enough run length
-		int slot = 0;
-		int runLength = 0;
-		bool extendFile = false;
-		while (runLength < sectorsNeeded)
-		{
-			if (sectorFree.find(slot + runLength) == sectorFree.end())
-			{
-				extendFile = true;
-				break;
-			}
-			if (sectorFree[slot + runLength] == true)
-			{
-				runLength++;
-			}
-			else
-			{
-				slot = slot + runLength + 1;
-				runLength = 0;
-			}
-		}
-
-		if (extendFile)
-		{
-			fseek(file, 0, SEEK_END);
-			for (int i = 0; i < (sectorsNeeded - runLength); i++)
-			{
-				fwrite(emptyChunk, sizeof(int), SECTOR_INTS, file);
-				sectorFree[slot + i] = true;
-			}
-		}
-		offsets[x + z * SECTOR_COLS] = (slot << 8) | sectorsNeeded;
-		// mark slots as taken
-		for (int i = 0; i < sectorsNeeded; i++)
-		{
-			sectorFree[slot + i] = false;
-		}
-
-		// write!
-		write(slot, chunkData);
-
-		// write sector data
-		fseek(file, (x + z * SECTOR_COLS) * sizeof(int), SEEK_SET);
-		fwrite(&offsets[x + z * SECTOR_COLS], sizeof(int), 1, file);
+		LOGI("Chunk is too big to be saved to file\n");
+		return false;
 	}
 
+	const int oldOffset = offsets[index];
+	int oldSector = oldOffset >> 8;
+	int oldCount = oldOffset & 0xff;
+
+	bool oldEntryValid = false;
+
+	if (oldSector > 0 && oldCount > 0)
+	{
+		const int lastOldSector =
+			oldSector + oldCount - 1;
+
+		oldEntryValid =
+			sectorFree.find(oldSector) != sectorFree.end() &&
+			sectorFree.find(lastOldSector) != sectorFree.end();
+	}
+
+	if (!oldEntryValid)
+	{
+		oldSector = 0;
+		oldCount = 0;
+	}
+
+	// Same allocation size: safely overwrite the existing record.
+	if (oldSector != 0 && oldCount == sectorsNeeded)
+		return write(oldSector, chunkData);
+
+	// Do not free the old allocation yet. Keep the previous saved
+	// chunk valid until the replacement data and its index are written.
+	int slot = 0;
+	int runLength = 0;
+	bool extendFile = false;
+
+	while (runLength < sectorsNeeded)
+	{
+		const int candidate = slot + runLength;
+
+		FreeSectorMap::iterator it =
+			sectorFree.find(candidate);
+
+		if (it == sectorFree.end())
+		{
+			extendFile = true;
+			break;
+		}
+
+		if (it->second)
+		{
+			++runLength;
+		}
+		else
+		{
+			slot = candidate + 1;
+			runLength = 0;
+		}
+	}
+
+	if (extendFile)
+	{
+		const int appendStart = slot + runLength;
+
+		// open() keeps the sector map contiguous through the current
+		// end of the file. Appending anywhere else would be unsafe.
+		if (appendStart != static_cast<int>(sectorFree.size()))
+		{
+			LOGI("Region sector map is not contiguous\n");
+			return false;
+		}
+
+		if (appendStart > LONG_MAX / SECTOR_BYTES ||
+			fseek(file, 0, SEEK_END) != 0)
+		{
+			LOGI("Failed to seek while extending region file\n");
+			return false;
+		}
+
+		const long expectedEnd =
+			static_cast<long>(appendStart) * SECTOR_BYTES;
+
+		if (ftell(file) != expectedEnd)
+		{
+			LOGI("Unexpected region file end position\n");
+			return false;
+		}
+
+		const int sectorsToAppend =
+			sectorsNeeded - runLength;
+
+		for (int i = 0; i < sectorsToAppend; ++i)
+		{
+			if (fwrite(emptyChunk, sizeof(int),
+				SECTOR_INTS, file) != SECTOR_INTS)
+			{
+				LOGI("Failed to extend region file\n");
+				return false;
+			}
+
+			// These are the sectors actually appended at EOF.
+			sectorFree[appendStart + i] = true;
+		}
+
+		if (fflush(file) != 0)
+		{
+			LOGI("Failed to flush extended region file\n");
+			return false;
+		}
+	}
+
+	if (slot <= 0 || slot > (INT_MAX >> 8))
+	{
+		LOGI("Invalid sector allocation: %d\n", slot);
+		return false;
+	}
+
+	// Write the replacement record before changing the chunk index.
+	if (!write(slot, chunkData))
+		return false;
+
+	for (int i = 0; i < sectorsNeeded; ++i)
+		sectorFree[slot + i] = false;
+
+	const int newOffset =
+		(slot << 8) | sectorsNeeded;
+
+	if (fseek(file, index * static_cast<int>(sizeof(int)),
+		SEEK_SET) != 0 ||
+		fwrite(&newOffset, sizeof(int), 1, file) != 1)
+	{
+		LOGI("Failed to update region index for chunk (%d, %d)\n",
+			x, z);
+		return false;
+	}
+
+	// Remember the new entry even if flushing fails. This prevents
+	// the current process from reusing sectors the index may reference.
+	offsets[index] = newOffset;
+
+	if (fflush(file) != 0)
+	{
+		LOGI("Failed to flush region index for chunk (%d, %d)\n",
+			x, z);
+		return false;
+	}
+
+	// Only release the old allocation after committing the new index.
+	for (int i = 0; i < oldCount; ++i)
+		sectorFree[oldSector + i] = true;
 
 	return true;
 }
 
 bool RegionFile::write(int sector, RakNet::BitStream& chunkData)
 {
-	fseek(file, sector * SECTOR_BYTES, SEEK_SET);
-	//LOGI("writing %d B to sector %d\n", chunkData.GetNumberOfBytesUsed(), sector);
-	int size = chunkData.GetNumberOfBytesUsed() + sizeof(int);
-	logAssert(fwrite(&size, sizeof(int), 1, file), 1);
-	logAssert(fwrite(chunkData.GetData(), 1, chunkData.GetNumberOfBytesUsed(), file), chunkData.GetNumberOfBytesUsed());
+	if (!file ||
+		sector <= 0 ||
+		sector > LONG_MAX / SECTOR_BYTES)
+	{
+		LOGI("Invalid region write sector: %d\n", sector);
+		return false;
+	}
+
+	const long sectorOffset =
+		static_cast<long>(sector) * SECTOR_BYTES;
+
+	if (fseek(file, sectorOffset, SEEK_SET) != 0)
+	{
+		LOGI("Failed to seek to sector %d\n", sector);
+		return false;
+	}
+
+	const int payloadSize =
+		static_cast<int>(chunkData.GetNumberOfBytesUsed());
+
+	const int storedSize =
+		payloadSize + static_cast<int>(sizeof(int));
+
+	if (fwrite(&storedSize, sizeof(int), 1, file) != 1)
+	{
+		LOGI("Failed to write chunk length at sector %d\n", sector);
+		return false;
+	}
+
+	if (payloadSize > 0 &&
+		fwrite(chunkData.GetData(), 1, payloadSize, file)
+		!= static_cast<size_t>(payloadSize))
+	{
+		LOGI("Failed to write chunk payload at sector %d\n", sector);
+		return false;
+	}
+
+	if (fflush(file) != 0)
+	{
+		LOGI("Failed to flush chunk at sector %d\n", sector);
+		return false;
+	}
 
 	return true;
 }

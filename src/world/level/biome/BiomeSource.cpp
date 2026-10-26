@@ -2,6 +2,7 @@
 #include "Biome.h"
 #include "../Level.h"
 #include "../ChunkPos.h"
+#include <climits>
 
 const float BiomeSource::zoom = 2 * 1;
 
@@ -23,6 +24,44 @@ BiomeSource::BiomeSource()
 	biomes(NULL)
 {
 	biomes = new Biome*[16*16];
+}
+
+void BiomeSource::ensureBufferCapacity(int size)
+{
+	if (size <= 0)
+		return;
+
+	if (lenTemperatures < size)
+	{
+		float* newBuffer = new float[size];
+		delete[] temperatures;
+		temperatures = newBuffer;
+		lenTemperatures = size;
+	}
+
+	if (lenDownfalls < size)
+	{
+		float* newBuffer = new float[size];
+		delete[] downfalls;
+		downfalls = newBuffer;
+		lenDownfalls = size;
+	}
+
+	if (lenNoises < size)
+	{
+		float* newBuffer = new float[size];
+		delete[] noises;
+		noises = newBuffer;
+		lenNoises = size;
+	}
+
+	if (lenBiomes < size)
+	{
+		Biome** newBuffer = new Biome * [size];
+		delete[] biomes;
+		biomes = newBuffer;
+		lenBiomes = size;
+	}
 }
 
 BiomeSource::BiomeSource( Level* level )
@@ -81,33 +120,51 @@ Biome** BiomeSource::getBiomeBlock( int x, int z, int w, int h )
     return biomes;
 }
 
-Biome** BiomeSource::getBiomeBlock( Biome** biomes__, int x, int z, int w, int h )
+Biome** BiomeSource::getBiomeBlock(
+	Biome** biomes__, int x, int z, int w, int h)
 {
-	//for (int i = 0; i < w*h; ++i) biomes__[i] = Biome::tundra;
-	//const int size = w * h;
-	//if (lenBiomes < size) {
-	//	//printf("changing to size: %d (was %d). %d, %d (%d, %d)\n", size, lenBiomes, x, z, w, h);
-	//	if (biomes) delete[] biomes;
-	//	biomes = new Biome*[size];
-	//	lenBiomes = size;
-	//}
+	if (w <= 0 || h <= 0 || w > INT_MAX / h)
+		return biomes;
 
-	temperatures = temperatureMap->getRegion(temperatures, x, z, w, w, tempScale, tempScale, 0.25f);
-	downfalls = downfallMap->getRegion(downfalls, x, z, w, w, downfallScale, downfallScale, 0.3333f);
-	noises = noiseMap->getRegion(noises, x, z, w, w, noiseScale, noiseScale, 0.588f);
+	ensureBufferCapacity(w * h);
+
+	temperatures = temperatureMap->getRegion(
+		temperatures, x, z, w, h,
+		tempScale, tempScale, 0.25f);
+
+	downfalls = downfallMap->getRegion(
+		downfalls, x, z, w, h,
+		downfallScale, downfallScale, 0.3333f);
+
+	noises = noiseMap->getRegion(
+		noises, x, z, w, h,
+		noiseScale, noiseScale, 0.588f);
 
 	int pp = 0;
-	for (int yy = 0; yy < w; yy++) {
-		for (int xx = 0; xx < h; xx++) {
-			float noise = (noises[pp] * 1.1f + 0.5f);
+
+	for (int yy = 0; yy < w; ++yy)
+	{
+		for (int xx = 0; xx < h; ++xx)
+		{
+			float noise = noises[pp] * 1.1f + 0.5f;
 
 			float split2 = 0.01f;
 			float split1 = 1 - split2;
-			float temperature = (temperatures[pp] * 0.15f + 0.7f) * split1 + noise * split2;
+
+			float temperature =
+				(temperatures[pp] * 0.15f + 0.7f)
+				* split1 + noise * split2;
+
 			split2 = 0.002f;
 			split1 = 1 - split2;
-			float downfall = (downfalls[pp] * 0.15f + 0.5f) * split1 + noise * split2;
-			temperature = 1 - ((1 - temperature) * (1 - temperature));
+
+			float downfall =
+				(downfalls[pp] * 0.15f + 0.5f)
+				* split1 + noise * split2;
+
+			temperature =
+				1 - ((1 - temperature) * (1 - temperature));
+
 			if (temperature < 0) temperature = 0;
 			if (downfall < 0) downfall = 0;
 			if (temperature > 1) temperature = 1;
@@ -115,7 +172,6 @@ Biome** BiomeSource::getBiomeBlock( Biome** biomes__, int x, int z, int w, int h
 
 			temperatures[pp] = temperature;
 			downfalls[pp] = downfall;
-			// System.out.println(downfall);
 			biomes[pp++] = Biome::getBiome(temperature, downfall);
 		}
 	}
@@ -123,56 +179,62 @@ Biome** BiomeSource::getBiomeBlock( Biome** biomes__, int x, int z, int w, int h
 	return biomes;
 }
 
-float* BiomeSource::getTemperatureBlock( float* temperatures__, int x, int z, int w, int h )
+float* BiomeSource::getTemperatureBlock(
+	float* temperatures__, int x, int z, int w, int h)
 {
-	//LOGI("gTempBlock: 1\n");
-	//const int size = w * h;
-	//if (lenTemperatures < size) {
-	//	if (temperatures) delete[] temperatures;
-	//	temperatures = new float[size];
-	//	lenTemperatures = size;
-	//}
+	if (w <= 0 || h <= 0 || w > INT_MAX / h)
+		return temperatures;
 
-	float * ot = temperatures;
-	temperatures = temperatureMap->getRegion(temperatures, x, z, w, h, tempScale, tempScale, 0.25f);
-	noises = noiseMap->getRegion(noises, x, z, w, h, noiseScale, noiseScale, 0.588f);
+	ensureBufferCapacity(w * h);
 
-	if (ot != temperatures) {
-		LOGI("tmp ptr changed\n");
-	}
+	temperatures = temperatureMap->getRegion(
+		temperatures, x, z, w, h,
+		tempScale, tempScale, 0.25f);
+
+	noises = noiseMap->getRegion(
+		noises, x, z, w, h,
+		noiseScale, noiseScale, 0.588f);
 
 	int pp = 0;
-	for (int yy = 0; yy < w; yy++) {
-		for (int xx = 0; xx < h; xx++) {
-			float noise = (noises[pp] * 1.1f + 0.5f);
+
+	for (int yy = 0; yy < w; ++yy)
+	{
+		for (int xx = 0; xx < h; ++xx)
+		{
+			float noise = noises[pp] * 1.1f + 0.5f;
 
 			float split2 = 0.01f;
 			float split1 = 1 - split2;
-			float temperature = (temperatures[pp] * 0.15f + 0.7f) * split1 + noise * split2;
-			temperature = 1 - ((1 - temperature) * (1 - temperature));
+
+			float temperature =
+				(temperatures[pp] * 0.15f + 0.7f)
+				* split1 + noise * split2;
+
+			temperature =
+				1 - ((1 - temperature) * (1 - temperature));
 
 			if (temperature < 0) temperature = 0;
 			if (temperature > 1) temperature = 1;
 
 			temperatures[pp] = temperature;
-			pp++;
+			++pp;
 		}
 	}
-
-	// System.out.println(min+", "+max);
 
 	return temperatures;
 }
 
-float* BiomeSource::getDownfallBlock( float* downfalls__, int x, int z, int w, int h )
+float* BiomeSource::getDownfallBlock(
+	float* downfalls__, int x, int z, int w, int h)
 {
-//	//const int size = w * h;
-//	//if (lenDownfalls < size) {
-//	//	delete[] downfalls;
-//	//	downfalls = new float[size];
-//	//	lenDownfalls = size;
-//	//}
-//
-	downfalls = downfallMap->getRegion(downfalls, x, z, w, w, downfallScale, downfallScale, 0.5f);
+	if (w <= 0 || h <= 0 || w > INT_MAX / h)
+		return downfalls;
+
+	ensureBufferCapacity(w * h);
+
+	downfalls = downfallMap->getRegion(
+		downfalls, x, z, w, h,
+		downfallScale, downfallScale, 0.5f);
+
 	return downfalls;
 }

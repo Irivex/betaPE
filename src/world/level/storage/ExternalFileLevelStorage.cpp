@@ -568,7 +568,10 @@ void ExternalFileLevelStorage::save(Level* level, LevelChunk* levelChunk)
 		LOGI("Failed to write chunk (%d, %d), local (%d, %d)\n",
 			levelChunk->x, levelChunk->z,
 			localX, localZ);
+		return;
 	}
+
+	levelChunk->unsaved = false;
 }
 
 LevelChunk* ExternalFileLevelStorage::load(Level* level, int x, int z)
