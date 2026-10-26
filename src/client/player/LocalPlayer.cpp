@@ -24,6 +24,7 @@
 #include "../../platform/HttpClient.h"
 #include "../../platform/CThread.h"
 #include "../../util/StringUtils.h"
+#include "../../util/Mth.h"
 #include "client/Options.h"
 
 #if defined(_WIN32)
@@ -650,6 +651,22 @@ void LocalPlayer::releaseAllKeys()
 
 float LocalPlayer::getWalkingSpeedModifier() {
 	return sprinting ? 1.3f : 1.0f;
+}
+
+void LocalPlayer::jumpFromGround()
+{
+    // Preserve the normal jump height and vertical velocity.
+    super::jumpFromGround();
+
+    // Only add the extra impulse for a forward sprint-jump.
+    if (!sprinting || !input || input->ya <= 0.0f)
+        return;
+
+    // Classic Minecraft-style forward impulse.
+    const float yaw = yRot * Mth::DEGRAD;
+
+    xd -= Mth::sin(yaw) * 0.2f;
+    zd += Mth::cos(yaw) * 0.2f;
 }
 
 float LocalPlayer::getFieldOfViewModifier() {

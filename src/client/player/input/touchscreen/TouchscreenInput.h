@@ -40,6 +40,7 @@ public:
 
 	const RectangleArea& getRectangleArea();
     const RectangleArea& getPauseRectangleArea();
+	const RectangleArea& getJumpRectangleArea();
 
 private:
 	void clear();
@@ -64,6 +65,7 @@ private:
 	RectangleArea* aChat;
 	//RectangleArea* aUpJump;
 	RectangleArea* aJump;
+	RectangleArea* aCrouch;
 	RectangleArea* aUpLeft;
 	RectangleArea* aUpRight;
 	bool _pauseIsDown;

@@ -71,6 +71,7 @@ public:
 		joyTouchArea(-1, -1, 0, 0),
 		inventoryArea(-1,-1, 0, 0),
 		pauseArea(-1, -1, 0, 0),
+		jumpArea(-1, -1, 0, 0),
 		_buildMovement(0),
 		_sentFirstRemove(false),
 		_canDestroy(false),
@@ -129,6 +130,7 @@ public:
 			_area.include(&screenArea);
 			_area.exclude(&moveArea);
 			_area.exclude(&inventoryArea);
+			_area.exclude(&jumpArea);
 #ifdef __APPLE__
             _area.exclude(&pauseArea);
 #endif /*__APPLE__*/
@@ -362,6 +364,7 @@ public:
 	RectangleArea joyTouchArea;
 	RectangleArea inventoryArea;
     RectangleArea pauseArea;
+	RectangleArea jumpArea;
 
 private:
 	IInputHolder* _holder;
@@ -427,6 +430,7 @@ public:
 		_move.onConfigChanged(c);
 		_turnBuild.moveArea = _move.getRectangleArea();
 		_turnBuild.pauseArea = _move.getPauseRectangleArea();
+		_turnBuild.jumpArea = _move.getJumpRectangleArea();
 		_turnBuild.inventoryArea = _mc->gui.getRectangleArea( _mc->options.getBooleanValue(OPTIONS_IS_LEFT_HANDED)? 1 : -1 );
 		_turnBuild.setSensitivity(c.options->getBooleanValue(OPTIONS_IS_JOY_TOUCH_AREA)? 1.8f : 1.0f);
 		((ITurnInput*)&_turnBuild)->onConfigChanged(c);

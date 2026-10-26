@@ -89,6 +89,7 @@ protected:
 	int ascendTriggerTime;
 	int descendTriggerTime;
 	bool ascending, descending;
+	void jumpFromGround() override;
 private:
     // local player fly
     // -----------------------
