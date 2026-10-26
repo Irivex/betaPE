@@ -1637,8 +1637,13 @@ void Minecraft::setIsCreativeMode(bool isCreative)
 		_isCreativeMode = isCreative;
 	}
 #endif
-	if (player)
+	if (player) {
 		gameMode->initAbilities(player->abilities);
+
+		if (player->inventory) {
+			player->inventory->setCreativeMode(_isCreativeMode);
+		}
+	}
 }
 
 bool Minecraft::isCreativeMode() {

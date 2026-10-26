@@ -24,6 +24,7 @@ public:
 	~Inventory();
 
 	void clearInventoryWithDefault();
+	void setCreativeMode(bool creativeMode);
 	//
 	// Selection slots
 	//

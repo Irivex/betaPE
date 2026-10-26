@@ -23,6 +23,11 @@ Inventory::Inventory( Player* player, bool creativeMode )
 Inventory::~Inventory() {
 }
 
+void Inventory::setCreativeMode(bool creativeMode)
+{
+	_isCreative = creativeMode;
+}
+
 ItemInstance* Inventory::getSelected() {
 	return getLinked(selected);
 }
