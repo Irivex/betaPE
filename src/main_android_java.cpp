@@ -63,6 +63,7 @@ static void setupExternalPath(JNIEnv* env, MAIN_CLASS* app)
     jobject pathString = env->CallObjectMethod(file, fileMethod);
 
     const char* str = env->GetStringUTFChars((jstring) pathString, NULL);
+    app->externalWorldStoragePath = str;
     app->externalStoragePath = str;
     app->externalCacheStoragePath = str;
     LOGI("%s", str);

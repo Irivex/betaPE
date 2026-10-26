@@ -210,6 +210,7 @@ public:
 	// It sets the base path to where worlds can be written (sdcard on android)
 	std::string externalStoragePath;
 	std::string externalCacheStoragePath;
+	std::string externalWorldStoragePath;
 protected:
 	Timer timer;
 

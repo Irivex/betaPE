@@ -105,7 +105,17 @@ void NinecraftApp::init()
 	Minecraft::init();
 
 #if !defined(DEMO_MODE) && !defined(APPLE_DEMO_PROMOTION) && !defined(NO_STORAGE)
-	storageSource = new ExternalFileLevelStorageSource(externalStoragePath, externalCacheStoragePath);
+	const std::string worldRoot = externalWorldStoragePath.empty()
+		? externalStoragePath
+		: externalWorldStoragePath;
+
+	const std::string temporaryRoot = externalWorldStoragePath.empty()
+		? externalCacheStoragePath
+		: externalWorldStoragePath;
+
+	storageSource = new ExternalFileLevelStorageSource(
+		worldRoot,
+		temporaryRoot);
 #else
 	storageSource = new MemoryLevelStorageSource();
 #endif
