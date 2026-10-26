@@ -25,9 +25,9 @@ LevelData::LevelData( const LevelSettings& settings, const std::string& levelNam
 	gameType(settings.getGameType()),
 	allowCheats(settings.getAllowCheats()),
 	levelName(levelName),
-	xSpawn(128),
+	xSpawn(settings.getWorldSize() / 2),
 	ySpawn(64),
-	zSpawn(128),
+	zSpawn(settings.getWorldSize() / 2),
 	lastPlayed(0),
 	time(0),
 	dimension(Dimension::NORMAL),
@@ -40,6 +40,14 @@ LevelData::LevelData( const LevelSettings& settings, const std::string& levelNam
 
 	this->generatorVersion = generatorVersion;
 	spawnMobs = (gameType == GameType::Survival);
+
+	const int centeredOffset =
+		settings.getWorldSize() > 256
+		? (settings.getWorldSize() - 256) / 2
+		: 0;
+
+	generationOffsetX = centeredOffset;
+	generationOffsetZ = centeredOffset;
 }
 
 LevelData::LevelData( const LevelData& rhs )
@@ -61,6 +69,8 @@ LevelData::LevelData( const LevelData& rhs )
 	playerData(rhs.playerData),
 	worldSize(rhs.worldSize)
 {
+	generationOffsetX = rhs.generationOffsetX;
+	generationOffsetZ = rhs.generationOffsetZ;
 	setPlayerTag(rhs.loadedPlayerTag);
 }
 
@@ -83,6 +93,8 @@ LevelData& LevelData::operator=( const LevelData& rhs )
 		generatorVersion	= rhs.generatorVersion;
 		storageVersion		= rhs.storageVersion;
 		worldSize			= rhs.worldSize;
+		generationOffsetX = rhs.generationOffsetX;
+		generationOffsetZ = rhs.generationOffsetZ;
 		setPlayerTag(rhs.loadedPlayerTag);
 	}
 
@@ -167,6 +179,8 @@ void LevelData::setTagData(CompoundTag* tag, CompoundTag* playerTag)
 	tag->putInt("StorageVersion", storageVersion);
 	tag->putInt("Platform", 2);
 	tag->putInt("worldSize", worldSize); // Save worldSize to disk
+	tag->putInt("GenerationOffsetX", generationOffsetX);
+	tag->putInt("GenerationOffsetZ", generationOffsetZ);
 
 	if (playerTag != NULL) {
 		tag->putCompound("Player", playerTag);
@@ -195,6 +209,15 @@ void LevelData::getTagData(const CompoundTag* tag)
 	else {
 		worldSize = 256;
 	}
+
+	// Existing saves without these tags retain their original origin.
+	generationOffsetX = tag->contains("GenerationOffsetX")
+		? tag->getInt("GenerationOffsetX")
+		: 0;
+
+	generationOffsetZ = tag->contains("GenerationOffsetZ")
+		? tag->getInt("GenerationOffsetZ")
+		: 0;
 
 	spawnMobs = (gameType == GameType::Survival);
 
@@ -345,6 +368,16 @@ int LevelData::getWorldSize() const
 void LevelData::setWorldSize(int size)
 {
 	this->worldSize = size;
+}
+
+int LevelData::getGenerationOffsetX() const
+{
+	return generationOffsetX;
+}
+
+int LevelData::getGenerationOffsetZ() const
+{
+	return generationOffsetZ;
 }
 
 int LevelData::getStorageVersion() const

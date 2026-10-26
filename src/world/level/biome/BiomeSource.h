@@ -52,6 +52,9 @@ private:
 	Random rndDownfall;
 	Random rndNoise;
 
+	int generationOffsetX = 0;
+	int generationOffsetZ = 0;
+
 	static const float zoom;
 
 	static const float tempScale;

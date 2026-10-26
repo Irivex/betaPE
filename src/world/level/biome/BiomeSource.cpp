@@ -76,7 +76,10 @@ BiomeSource::BiomeSource( Level* level )
 	downfalls(NULL),
 	noises(NULL),
 	biomes(NULL)
+
 {
+	generationOffsetX = level->getLevelData()->getGenerationOffsetX();
+	generationOffsetZ = level->getLevelData()->getGenerationOffsetZ();
 	temperatureMap = new PerlinSimplexNoise(&rndTemperature, 4);
 	downfallMap = new PerlinSimplexNoise(&rndDownfall, 4);
 	noiseMap = new PerlinSimplexNoise(&rndNoise, 2);
@@ -110,6 +113,8 @@ Biome* BiomeSource::getBiome( int x, int z )
 
 float BiomeSource::getTemperature( int x, int z )
 {
+	x -= generationOffsetX;
+	z -= generationOffsetZ;
 	temperatures = temperatureMap->getRegion(temperatures, x, z, 1, 1, tempScale, tempScale, 0.5f);
 	return temperatures[0];
 }
@@ -125,6 +130,9 @@ Biome** BiomeSource::getBiomeBlock(
 {
 	if (w <= 0 || h <= 0 || w > INT_MAX / h)
 		return biomes;
+
+	x -= generationOffsetX;
+	z -= generationOffsetZ;
 
 	ensureBufferCapacity(w * h);
 
@@ -185,6 +193,9 @@ float* BiomeSource::getTemperatureBlock(
 	if (w <= 0 || h <= 0 || w > INT_MAX / h)
 		return temperatures;
 
+	x -= generationOffsetX;
+	z -= generationOffsetZ;
+
 	ensureBufferCapacity(w * h);
 
 	temperatures = temperatureMap->getRegion(
@@ -229,6 +240,9 @@ float* BiomeSource::getDownfallBlock(
 {
 	if (w <= 0 || h <= 0 || w > INT_MAX / h)
 		return downfalls;
+
+	x -= generationOffsetX;
+	z -= generationOffsetZ;
 
 	ensureBufferCapacity(w * h);
 

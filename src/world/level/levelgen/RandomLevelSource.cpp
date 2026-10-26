@@ -225,12 +225,22 @@ void RandomLevelSource::postProcess(ChunkSource* parent, int xt, int zt) {
 	int xo = xt * 16;
 	int zo = zt * 16;
 
+	// Real coordinates are used for feature placement.
+// Generation coordinates are used for deterministic generation.
+	const int generationChunkX =
+		xt - level->getLevelData()->getGenerationOffsetX() / 16;
+
+	const int generationChunkZ =
+		zt - level->getLevelData()->getGenerationOffsetZ() / 16;
+
 	Biome* biome = level->getBiomeSource()->getBiome(xo + 16, zo + 16);
 
 	random.setSeed(level->getSeed());
 	int xScale = random.nextInt() / 2 * 2 + 1;
 	int zScale = random.nextInt() / 2 * 2 + 1;
-	random.setSeed(((xt * xScale) + (zt * zScale)) ^ level->getSeed());
+	random.setSeed(
+		((generationChunkX * xScale)
+			+ (generationChunkZ * zScale)) ^ level->getSeed());
 
 	// Lakes are commented out in OG code to preserve seed parity[cite: 3]
 	// if (random.nextInt(4) == 0) { ... }
@@ -313,8 +323,10 @@ void RandomLevelSource::postProcess(ChunkSource* parent, int xt, int zt) {
 		feature.place(level, &random, x, y, z);
 	}
 
-	// --- ISOLATED RANDOM STREAM FOR YOUR FORK'S EXTRAS ---
-	Random modRng(((xt * xScale) + (zt * zScale)) ^ level->getSeed() + 9999L);
+	// --- ISOLATED RANDOM STREAM FOR MY FORK'S EXTRAS ---
+	Random modRng(
+		((generationChunkX * xScale)
+			+ (generationChunkZ * zScale)) ^ level->getSeed() + 9999L);
 
 	for (int i = 0; i < 3; i++) {
 		int x = xo + modRng.nextInt(16);
@@ -325,7 +337,11 @@ void RandomLevelSource::postProcess(ChunkSource* parent, int xt, int zt) {
 	}
 
 	const float ss = 0.5f;
-	int oFor = (int)((forestNoise.getValue(xo * ss, zo * ss) / 8 + random.nextFloat() * 4 + 4) / 3);
+	int oFor = (int)(
+		(forestNoise.getValue(
+			(generationChunkX * 16) * ss,
+			(generationChunkZ * 16) * ss) / 8
+			+ random.nextFloat() * 4 + 4) / 3);
 	int forests = 0;
 	if (random.nextInt(10) == 0) forests += 1;
 
@@ -465,28 +481,60 @@ LevelChunk* RandomLevelSource::create(int x, int z) {
 	return getChunk(x, z);
 }
 
-LevelChunk* RandomLevelSource::getChunk(int xOffs, int zOffs) {
-	//static int chunkx = 0;
+LevelChunk* RandomLevelSource::getChunk(int xOffs, int zOffs)
+{
+	// Keep the real world coordinates for chunk storage and lookup.
 	int hashedPos = ChunkPos::hashCode(xOffs, zOffs);
 
 	ChunkMap::iterator it = chunkMap.find(hashedPos);
 	if (it != chunkMap.end())
 		return it->second;
 
-	random.setSeed((long)(xOffs * 341872712l + zOffs * 132899541l)); //@fix
+	// Translate to the equivalent chunk in the original 256x256
+	// generation coordinate space.
+	const int generationChunkX =
+		xOffs - level->getLevelData()->getGenerationOffsetX() / 16;
+	const int generationChunkZ =
+		zOffs - level->getLevelData()->getGenerationOffsetZ() / 16;
 
-	unsigned char* blocks = new unsigned char[LevelChunk::ChunkBlockCount];
-	LevelChunk* levelChunk = new LevelChunk(level, blocks, xOffs, zOffs);
+	// Preserve per-chunk randomness by using generation coordinates.
+	random.setSeed(
+		(long)(generationChunkX * 341872712l
+			+ generationChunkZ * 132899541l));
+
+	unsigned char* blocks =
+		new unsigned char[LevelChunk::ChunkBlockCount];
+
+	// The chunk's actual location remains unchanged.
+	LevelChunk* levelChunk =
+		new LevelChunk(level, blocks, xOffs, zOffs);
+
 	chunkMap.insert(std::make_pair(hashedPos, levelChunk));
 
-	Biome** biomes = level->getBiomeSource()->getBiomeBlock(/*biomes, */xOffs * 16, zOffs * 16, 16, 16);
-	float* temperatures = level->getBiomeSource()->temperatures;
-	prepareHeights(xOffs, zOffs, blocks, 0, temperatures);//biomes, temperatures);
-	buildSurfaces(xOffs, zOffs, blocks, biomes);
+	// BiomeSource translates these real world coordinates internally.
+	Biome** biomes =
+		level->getBiomeSource()->getBiomeBlock(
+			xOffs * 16, zOffs * 16, 16, 16);
 
-	// Carve caves into the chunk
-	caveFeature.apply(this, level, xOffs, zOffs, blocks, LevelChunk::ChunkBlockCount);
-	canyonFeature.apply(this, level, xOffs, zOffs, blocks, LevelChunk::ChunkBlockCount);
+	float* temperatures = level->getBiomeSource()->temperatures;
+
+	// Terrain noise and carving use the translated coordinates.
+	prepareHeights(
+		generationChunkX, generationChunkZ,
+		blocks, 0, temperatures);
+
+	buildSurfaces(
+		generationChunkX, generationChunkZ,
+		blocks, biomes);
+
+	caveFeature.apply(
+		this, level, generationChunkX, generationChunkZ,
+		blocks, LevelChunk::ChunkBlockCount);
+
+	canyonFeature.apply(
+		this, level, generationChunkX, generationChunkZ,
+		blocks, LevelChunk::ChunkBlockCount);
+
 	levelChunk->recalcHeightmap();
 
 	return levelChunk;

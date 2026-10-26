@@ -80,6 +80,8 @@ public:
 	int playerDataVersion;
 	int  getWorldSize() const;
 	void setWorldSize(int size);
+	int getGenerationOffsetX() const;
+	int getGenerationOffsetZ() const;
 	std::string levelName;
 private:
 	long seed;
@@ -99,6 +101,10 @@ private:
 	//@note: This version is never written or loaded to disk. The only purpose
 	//       is to use it in the level generator on server and clients.
 	int generatorVersion;
+	// World-generation origin offset in blocks.
+// Old worlds default to zero; new worlds calculate this on creation.
+	int generationOffsetX = 0;
+	int generationOffsetZ = 0;
 };
 
 #endif /*NET_MINECRAFT_WORLD_LEVEL_STORAGE__LevelData_H__*/
