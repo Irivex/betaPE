@@ -5,25 +5,223 @@
 #include "../../../../nbt/NbtIo.h"
 
 ChestTileEntity::ChestTileEntity()
-:	super(TileEntityType::Chest),
-	FillingContainer(ItemsSize, 0, ContainerType::CONTAINER, false),
+	: ChestTileEntity(ItemsSize)
+{
+}
+
+ChestTileEntity::ChestTileEntity(int containerSize)
+	: super(TileEntityType::Chest),
+	FillingContainer(
+		containerSize, 0, ContainerType::CONTAINER, false),
 	tickInterval(0),
 	openCount(0),
 	openness(0), oOpenness(0),
 	hasCheckedNeighbors(false),
 	n(NULL), s(NULL), w(NULL), e(NULL)
 {
-	//rendererId = TR_CHEST_RENDERER;
+}
+
+ChestTileEntity* ChestTileEntity::getAdjacentChest(
+	int dx, int dz) const
+{
+	if (!level)
+		return NULL;
+
+	if (level->getTile(x + dx, y, z + dz) != Tile::chest->id)
+		return NULL;
+
+	TileEntity* te = level->getTileEntity(
+		x + dx, y, z + dz);
+
+	if (!TileEntity::isType(te, TileEntityType::Chest))
+		return NULL;
+
+	return (ChestTileEntity*)te;
+}
+
+ChestTileEntity* ChestTileEntity::getChestForSlot(
+	int slot, int& localSlot) const
+{
+	// Multiplayer GUI inventories are temporary containers.
+	// Their 54 slots already live inside one local object.
+	if (numTotalSlots > ItemsSize) {
+		if (slot < 0 || slot >= numTotalSlots)
+			return NULL;
+
+		localSlot = slot;
+		return const_cast<ChestTileEntity*>(this);
+	}
+
+	if (slot < 0)
+		return NULL;
+
+	ChestTileEntity* west = getAdjacentChest(-1, 0);
+	ChestTileEntity* north = getAdjacentChest(0, -1);
+	ChestTileEntity* east = getAdjacentChest(1, 0);
+	ChestTileEntity* south = getAdjacentChest(0, 1);
+
+	ChestTileEntity* first = const_cast<ChestTileEntity*>(this);
+	ChestTileEntity* second = NULL;
+
+	// Keep slot ordering consistent regardless of which half
+	// was clicked: west first, or north first.
+	if (west) {
+		first = west;
+		second = const_cast<ChestTileEntity*>(this);
+	}
+	else if (north) {
+		first = north;
+		second = const_cast<ChestTileEntity*>(this);
+	}
+	else if (east) {
+		second = east;
+	}
+	else if (south) {
+		second = south;
+	}
+
+	if (slot < ItemsSize) {
+		localSlot = slot;
+		return first;
+	}
+
+	if (slot < ItemsSize * 2 && second) {
+		localSlot = slot - ItemsSize;
+		return second;
+	}
+
+	return NULL;
 }
 
 int ChestTileEntity::getContainerSize() const
 {
-	return ItemsSize;
+	// Temporary multiplayer inventory.
+	if (numTotalSlots > ItemsSize)
+		return numTotalSlots;
+
+	int localSlot = 0;
+
+	return getChestForSlot(ItemsSize, localSlot)
+		? ItemsSize * 2
+		: ItemsSize;
 }
 
-ItemInstance* ChestTileEntity::getItem( int slot )
+ItemInstance* ChestTileEntity::getItem(int slot)
 {
-	return items[slot];
+	int localSlot = 0;
+	ChestTileEntity* owner =
+		getChestForSlot(slot, localSlot);
+
+	return owner
+		? owner->FillingContainer::getItem(localSlot)
+		: NULL;
+}
+
+void ChestTileEntity::setItem(int slot, ItemInstance* item)
+{
+	int localSlot = 0;
+	ChestTileEntity* owner =
+		getChestForSlot(slot, localSlot);
+
+	if (!owner)
+		return;
+
+	owner->FillingContainer::setItem(localSlot, item);
+
+	ItemInstance* stored =
+		owner->FillingContainer::getItem(localSlot);
+
+	if (stored && stored->count > owner->getMaxStackSize())
+		stored->count = owner->getMaxStackSize();
+
+	if (owner->level)
+		owner->setChanged();
+}
+
+void ChestTileEntity::clearSlot(int slot)
+{
+	int localSlot = 0;
+	ChestTileEntity* owner =
+		getChestForSlot(slot, localSlot);
+
+	if (!owner)
+		return;
+
+	owner->FillingContainer::clearSlot(localSlot);
+
+	if (owner->level)
+		owner->setChanged();
+}
+
+bool ChestTileEntity::add(ItemInstance* item)
+{
+	if (!item || item->isNull())
+		return true;
+
+	const int originalCount = item->count;
+	const int size = getContainerSize();
+
+	// Fill existing compatible stacks first.
+	if (item->isStackable()) {
+		for (int i = 0; i < size && item->count > 0; ++i) {
+			ItemInstance* existing = getItem(i);
+
+			if (!existing || existing->isNull())
+				continue;
+
+			if (existing->id != item->id
+				|| !existing->isStackable())
+				continue;
+
+			if (existing->isStackedByData()
+				&& existing->getAuxValue() != item->getAuxValue())
+				continue;
+
+			int maxStack = existing->getMaxStackSize();
+			if (maxStack > getMaxStackSize())
+				maxStack = getMaxStackSize();
+
+			int space = maxStack - existing->count;
+			if (space <= 0)
+				continue;
+
+			int moved = item->count < space
+				? item->count : space;
+
+			existing->count += moved;
+			item->count -= moved;
+
+			int localSlot = 0;
+			ChestTileEntity* owner =
+				getChestForSlot(i, localSlot);
+
+			if (owner && owner->level)
+				owner->setChanged();
+		}
+	}
+
+	// Then fill empty slots across both halves.
+	for (int i = 0; i < size && item->count > 0; ++i) {
+		ItemInstance* existing = getItem(i);
+
+		if (existing && !existing->isNull())
+			continue;
+
+		int maxStack = item->getMaxStackSize();
+		if (maxStack > getMaxStackSize())
+			maxStack = getMaxStackSize();
+
+		int moved = item->count < maxStack
+			? item->count : maxStack;
+
+		ItemInstance stack(*item);
+		stack.count = moved;
+		setItem(i, &stack);
+
+		item->count -= moved;
+	}
+
+	return item->count < originalCount;
 }
 
 /*
@@ -158,11 +356,6 @@ void ChestTileEntity::checkNeighbors()
 		s = (ChestTileEntity*) level->getTileEntity(x, y, z + 1);
 	}
 
-	if (n != NULL) n->clearCache();
-	if (s != NULL) s->clearCache();
-	if (e != NULL) e->clearCache();
-	if (w != NULL) w->clearCache();
-	//        }
 }
 
 void ChestTileEntity::tick()

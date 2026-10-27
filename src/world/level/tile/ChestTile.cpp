@@ -29,20 +29,28 @@ int ChestTile::getRenderShape()
 	//return Tile::SHAPE_ENTITYTILE_ANIMATED;
 }
 
-void ChestTile::onPlace( Level* level, int x, int y, int z )
+void ChestTile::onPlace(Level* level, int x, int y, int z)
 {
 	super::onPlace(level, x, y, z);
 	recalcLockDir(level, x, y, z);
 
-	//@fullchest
-	//int n = level->getTile(x, y, z - 1); // face = 2
-	//int s = level->getTile(x, y, z + 1); // face = 3
-	//int w = level->getTile(x - 1, y, z); // face = 4
-	//int e = level->getTile(x + 1, y, z); // face = 5
-	//if (n == id) recalcLockDir(level, x, y, z - 1);
-	//if (s == id) recalcLockDir(level, x, y, z + 1);
-	//if (w == id) recalcLockDir(level, x - 1, y, z);
-	//if (e == id) recalcLockDir(level, x + 1, y, z);
+	const int offsetX[] = { -1, 1, 0, 0 };
+	const int offsetZ[] = { 0, 0, -1, 1 };
+
+	// Refresh adjacent chest entities when a pair is formed.
+	for (int i = 0; i < 4; ++i) {
+		int nx = x + offsetX[i];
+		int nz = z + offsetZ[i];
+
+		if (level->getTile(nx, y, nz) != id)
+			continue;
+
+		TileEntity* te = level->getTileEntity(nx, y, nz);
+		if (te)
+			te->clearCache();
+
+		recalcLockDir(level, nx, y, nz);
+	}
 }
 
 void ChestTile::setPlacedBy( Level* level, int x, int y, int z, Mob* by )
@@ -131,76 +139,84 @@ void ChestTile::recalcLockDir( Level* level, int x, int y, int z )
 	level->setData(x, y, z, lockDir);
 }
 
-int ChestTile::getTexture( LevelSource* level, int x, int y, int z, int face )
+int ChestTile::getTexture(
+	LevelSource* level, int x, int y, int z, int face)
 {
-	if (face == 1) return tex - 1;
-	if (face == 0) return tex - 1;
+	// Top and bottom.
+	if (face == 1 || face == 0)
+		return tex - 1;
 
-	/*
-	int n = level->getTile(x, y, z - 1); // face = 2
-	int s = level->getTile(x, y, z + 1); // face = 3
-	int w = level->getTile(x - 1, y, z); // face = 4
-	int e = level->getTile(x + 1, y, z); // face = 5
-	*/
+	const int n = level->getTile(x, y, z - 1);
+	const int s = level->getTile(x, y, z + 1);
+	const int w = level->getTile(x - 1, y, z);
+	const int e = level->getTile(x + 1, y, z);
 
-	// Long!
-	//@fullchest
-	/*
-	if (n == id || s == id) { 
-		if (face == 2 || face == 3) return tex;
+	// Chest pair running north/south.
+	if (n == id || s == id) {
+		if (face == 2 || face == 3)
+			return tex;
+
 		int offs = 0;
-		if (n == id) {
+		if (n == id)
 			offs = -1;
-		}
 
-		int w2 = level->getTile(x - 1, y, n == id ? z - 1 : z + 1);
-		int e2 = level->getTile(x + 1, y, n == id ? z - 1 : z + 1);
+		const int w2 = level->getTile(
+			x - 1, y, n == id ? z - 1 : z + 1);
+		const int e2 = level->getTile(
+			x + 1, y, n == id ? z - 1 : z + 1);
 
-		if (face == 4) offs = -1 - offs;
+		if (face == 4)
+			offs = -1 - offs;
 
 		int lockDir = 5;
-		if ((Tile::solid[w] || Tile::solid[w2]) && !Tile::solid[e] && !Tile::solid[e2]) lockDir = 5;
-		if ((Tile::solid[e] || Tile::solid[e2]) && !Tile::solid[w] && !Tile::solid[w2]) lockDir = 4;
-		return (face == lockDir ? tex + 16 : tex + 32) + offs;
-	} else if (w == id || e == id) {
-		if (face == 4 || face == 5) return tex;
+
+		if ((Tile::solid[w] || Tile::solid[w2])
+			&& !Tile::solid[e] && !Tile::solid[e2])
+			lockDir = 5;
+
+		if ((Tile::solid[e] || Tile::solid[e2])
+			&& !Tile::solid[w] && !Tile::solid[w2])
+			lockDir = 4;
+
+		return (face == lockDir ? tex + 16 : tex + 32)
+			+ offs;
+	}
+
+	// Chest pair running west/east.
+	if (w == id || e == id) {
+		if (face == 4 || face == 5)
+			return tex;
+
 		int offs = 0;
-		if (w == id) {
+		if (w == id)
 			offs = -1;
-		}
 
-		int n2 = level->getTile(w == id ? x - 1 : x + 1, y, z - 1);
-		int s2 = level->getTile(w == id ? x - 1 : x + 1, y, z + 1);
+		const int n2 = level->getTile(
+			w == id ? x - 1 : x + 1, y, z - 1);
+		const int s2 = level->getTile(
+			w == id ? x - 1 : x + 1, y, z + 1);
 
-		if (face == 3) offs = -1 - offs;
+		if (face == 3)
+			offs = -1 - offs;
+
 		int lockDir = 3;
-		if ((Tile::solid[n] || Tile::solid[n2]) && !Tile::solid[s] && !Tile::solid[s2]) lockDir = 3;
-		if ((Tile::solid[s] || Tile::solid[s2]) && !Tile::solid[n] && !Tile::solid[n2]) lockDir = 2;
 
-		return (face == lockDir ? tex + 16 : tex + 32) + offs;
-	} else { */
-		//int lockDir = 3;
-		int lockDir = level->getData(x, y, z);
+		if ((Tile::solid[n] || Tile::solid[n2])
+			&& !Tile::solid[s] && !Tile::solid[s2])
+			lockDir = 3;
 
-		/*
-		if ((lockDir == Facing::NORTH && Tile::solid[n])
-			||  (lockDir == Facing::SOUTH && Tile::solid[s])
-			||  (lockDir == Facing::WEST  && Tile::solid[w])
-			||  (lockDir == Facing::EAST  && Tile::solid[e])) {
-				if (Tile::solid[n] && !Tile::solid[s]) lockDir = 3;
-				if (Tile::solid[s] && !Tile::solid[n]) lockDir = 2;
-				if (Tile::solid[w] && !Tile::solid[e]) lockDir = 5;
-				if (Tile::solid[e] && !Tile::solid[w]) lockDir = 4;
-		}
-		*/
+		if ((Tile::solid[s] || Tile::solid[s2])
+			&& !Tile::solid[n] && !Tile::solid[n2])
+			lockDir = 2;
 
-		/*
-		if (Tile::solid[n] && !Tile::solid[s]) lockDir = 3;
-		if (Tile::solid[s] && !Tile::solid[n]) lockDir = 2;
-		if (Tile::solid[w] && !Tile::solid[e]) lockDir = 5;
-		if (Tile::solid[e] && !Tile::solid[w]) lockDir = 4;
-		*/
-		return (face == lockDir)? tex + 1 : tex;
+		return (face == lockDir ? tex + 16 : tex + 32)
+			+ offs;
+	}
+
+	// Ordinary single chest.
+	const int lockDir = level->getData(x, y, z);
+
+	return face == lockDir ? tex + 1 : tex;
 }
 
 int ChestTile::getTexture( int face )
@@ -211,22 +227,39 @@ int ChestTile::getTexture( int face )
 	return tex;
 }
 
-bool ChestTile::mayPlace( Level* level, int x, int y, int z, unsigned char face )
+bool ChestTile::mayPlace(
+	Level* level, int x, int y, int z, unsigned char face)
 {
+	const int offsetX[] = { -1, 1, 0, 0 };
+	const int offsetZ[] = { 0, 0, -1, 1 };
+
 	int chestCount = 0;
 
-	if (level->getTile(x - 1, y, z) == id) chestCount++;
-	if (level->getTile(x + 1, y, z) == id) chestCount++;
-	if (level->getTile(x, y, z - 1) == id) chestCount++;
-	if (level->getTile(x, y, z + 1) == id) chestCount++;
+	for (int i = 0; i < 4; ++i) {
+		int nx = x + offsetX[i];
+		int nz = z + offsetZ[i];
 
-	//@fullchest
-	if (chestCount > 0) return false;
+		if (level->getTile(nx, y, nz) != id)
+			continue;
 
-	//if (isFullChest(level, x - 1, y, z)) return false;
-	//if (isFullChest(level, x + 1, y, z)) return false;
-	//if (isFullChest(level, x, y, z - 1)) return false;
-	//if (isFullChest(level, x, y, z + 1)) return false;
+		// A chest can have only one horizontal partner.
+		if (++chestCount > 1)
+			return false;
+
+		// Do not extend an existing double chest into a triple
+		// or an L-shaped chest arrangement.
+		for (int j = 0; j < 4; ++j) {
+			int ax = nx + offsetX[j];
+			int az = nz + offsetZ[j];
+
+			if (ax == x && az == z)
+				continue;
+
+			if (level->getTile(ax, y, az) == id)
+				return false;
+		}
+	}
+
 	return true;
 }
 
@@ -243,9 +276,12 @@ void ChestTile::onRemove( Level* level, int x, int y, int z )
 	if (!level->isClientSide) {
 		TileEntity* te = level->getTileEntity(x, y, z);
 		if (te != NULL && te->type == TileEntityType::Chest) {
-			Container* container = (ChestTileEntity*) te;
-			for (int i = 0; i < container->getContainerSize(); i++) {
-				ItemInstance* item = container->getItem(i);
+			ChestTileEntity* chest = (ChestTileEntity*)te;
+
+			// Drop only this physical chest's 27 stored slots.
+			for (int i = 0; i < 9 * 3; ++i) {
+				ItemInstance* item =
+					chest->FillingContainer::getItem(i);
 				if (item != NULL) {
 					float xo = random.nextFloat() * 0.8f + 0.1f;
 					float yo = random.nextFloat() * 0.8f + 0.1f;
@@ -272,33 +308,48 @@ void ChestTile::onRemove( Level* level, int x, int y, int z )
 	super::onRemove(level, x, y, z);
 }
 
-bool ChestTile::use( Level* level, int x, int y, int z, Player* player )
+bool ChestTile::use(
+	Level* level, int x, int y, int z, Player* player)
 {
 	TileEntity* te = level->getTileEntity(x, y, z);
+
 	if (!TileEntity::isType(te, TileEntityType::Chest))
 		return true;
 
-	ChestTileEntity* chest = (ChestTileEntity*) te;
+	ChestTileEntity* chest = (ChestTileEntity*)te;
+	chest->checkNeighbors();
 
-	if (level->isSolidBlockingTile(x, y + 1, z)) return true;
-
-	// @fullchest
-	//if (level->getTile(x - 1, y, z) == id && (level->isSolidBlockingTile(x - 1, y + 1, z))) return true;
-	//if (level->getTile(x + 1, y, z) == id && (level->isSolidBlockingTile(x + 1, y + 1, z))) return true;
-	//if (level->getTile(x, y, z - 1) == id && (level->isSolidBlockingTile(x, y + 1, z - 1))) return true;
-	//if (level->getTile(x, y, z + 1) == id && (level->isSolidBlockingTile(x, y + 1, z + 1))) return true;
-
-	//if (level->getTile(x - 1, y, z) == id) container = /*new*/ CompoundContainer("Large chest", (ChestTileEntity) level->getTileEntity(x - 1, y, z), container);
-	//if (level->getTile(x + 1, y, z) == id) container = /*new*/ CompoundContainer("Large chest", container, (ChestTileEntity) level->getTileEntity(x + 1, y, z));
-	//if (level->getTile(x, y, z - 1) == id) container = /*new*/ CompoundContainer("Large chest", (ChestTileEntity) level->getTileEntity(x, y, z - 1), container);
-	//if (level->getTile(x, y, z + 1) == id) container = /*new*/ CompoundContainer("Large chest", container, (ChestTileEntity) level->getTileEntity(x, y, z + 1));
-
-	if (level->isClientSide) {
+	// Either half being blocked prevents opening the pair.
+	if (level->isSolidBlockingTile(x, y + 1, z))
 		return true;
-	}
+
+	if (chest->n && level->isSolidBlockingTile(
+		chest->n->x, chest->n->y + 1, chest->n->z))
+		return true;
+
+	if (chest->s && level->isSolidBlockingTile(
+		chest->s->x, chest->s->y + 1, chest->s->z))
+		return true;
+
+	if (chest->w && level->isSolidBlockingTile(
+		chest->w->x, chest->w->y + 1, chest->w->z))
+		return true;
+
+	if (chest->e && level->isSolidBlockingTile(
+		chest->e->x, chest->e->y + 1, chest->e->z))
+		return true;
+
+	if (level->isClientSide)
+		return true;
+
+	// Always open through the west or north half if paired.
+	// This keeps inventory ordering and lid animation consistent.
+	if (chest->w)
+		chest = chest->w;
+	else if (chest->n)
+		chest = chest->n;
 
 	player->openContainer(chest);
-
 	return true;
 }
 

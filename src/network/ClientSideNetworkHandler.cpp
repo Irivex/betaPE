@@ -1132,7 +1132,7 @@ void ClientSideNetworkHandler::handle(const RakNet::RakNetGUID& source, Containe
 			minecraft->player->containerMenu->containerId = packet->containerId;
 	}
 	if (packet->type == ContainerType::CONTAINER) {
-		ChestTileEntity* te = new ChestTileEntity();
+		ChestTileEntity* te = new ChestTileEntity(packet->size);
 		te->clientSideOnly = true;
 		minecraft->player->openContainer(te);
 		if (minecraft->player->containerMenu)

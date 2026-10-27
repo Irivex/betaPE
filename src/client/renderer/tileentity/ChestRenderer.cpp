@@ -22,18 +22,28 @@ void ChestRenderer::render( TileEntity* entity, float x, float y, float z, float
 		}
 
 		chest->checkNeighbors();
+
+		LOGI(
+			"Chest (%d,%d,%d): N=%d E=%d W=%d S=%d\n",
+			chest->x, chest->y, chest->z,
+			chest->n != NULL,
+			chest->e != NULL,
+			chest->w != NULL,
+			chest->s != NULL
+		);
 	}
 	if (chest->n != NULL || chest->w != NULL) return;
 
-	ChestModel* model;
-	//if (chest->e != NULL || chest->s != NULL) {
-	//	//model = &largeChestModel;
-	//	bindTexture("item/largechest.png");
-	//} else
-	{
-		model = &chestModel;
-		bindTexture("item/chest.png");
-	}
+	const bool isLargeChest =
+		chest->e != NULL || chest->s != NULL;
+
+	ChestModel* model = isLargeChest
+		? &largeChestModel
+		: &chestModel;
+
+	bindTexture(isLargeChest
+		? "item/largechest.png"
+		: "item/chest.png");
 
 	glPushMatrix2();
 	glColor4f2(1, 1, 1, 1);
@@ -56,14 +66,24 @@ void ChestRenderer::render( TileEntity* entity, float x, float y, float z, float
 	glRotatef2(rot, 0, 1, 0);
 	glTranslatef2(-0.5f, -0.5f, -0.5f);
 
-	float open = chest->oOpenness + (chest->openness - chest->oOpenness) * a;
-	if (chest->n != NULL) {
-		float open2 = chest->n->oOpenness + (chest->n->openness - chest->n->oOpenness) * a;
-		if (open2 > open) open = open2;
-	}
-	if (chest->w != NULL) {
-		float open2 = chest->w->oOpenness + (chest->w->openness - chest->w->oOpenness) * a;
-		if (open2 > open) open = open2;
+	ChestTileEntity* neighbors[] = {
+		chest->n, chest->e, chest->w, chest->s
+	};
+
+	float open = chest->oOpenness
+		+ (chest->openness - chest->oOpenness) * a;
+
+	for (int i = 0; i < 4; ++i) {
+		ChestTileEntity* neighbor = neighbors[i];
+
+		if (!neighbor)
+			continue;
+
+		float neighborOpen = neighbor->oOpenness
+			+ (neighbor->openness - neighbor->oOpenness) * a;
+
+		if (neighborOpen > open)
+			open = neighborOpen;
 	}
 
 	open = 1 - open;

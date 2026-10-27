@@ -24,6 +24,12 @@ public:
 	int getMaxStackSize() const;
 	std::string getName() const;
 
+	explicit ChestTileEntity(int containerSize);
+
+	void setItem(int slot, ItemInstance* item) override;
+	bool add(ItemInstance* item) override;
+	void clearSlot(int slot) override;
+
     ItemInstance* getItem(int slot);
 	//void setItem(int slot, ItemInstance* item);
     //ItemInstance removeItem(int slot, int count);
@@ -59,6 +65,8 @@ public:
 	int openCount;
 
 private:
+	ChestTileEntity* getAdjacentChest(int dx, int dz) const;
+	ChestTileEntity* getChestForSlot(int slot, int& localSlot) const;
 	static const int ItemsSize = 9*3;
 	int tickInterval;
 };

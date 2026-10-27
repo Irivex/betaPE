@@ -34,7 +34,7 @@ public:
 	// @itodo: keep return by value?
 	ItemInstance	removeItem(int slot, int count);
 
-	void			clearSlot( int slot );
+	virtual void	clearSlot( int slot );
 	void			clearInventory();
 	void			clearInventoryWithDefault();
 

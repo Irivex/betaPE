@@ -8,14 +8,21 @@
 
 class ChestTileEntity;
 
-class ChestRenderer: public TileEntityRenderer
+class ChestRenderer : public TileEntityRenderer
 {
-    /*@Override*/
-    void render(TileEntity* chest, float x, float y, float z, float a);
+public:
+    ChestRenderer()
+        : chestModel(false),
+        largeChestModel(true)
+    {
+    }
+
+    void render(
+        TileEntity* chest, float x, float y, float z, float a);
 
 private:
     ChestModel chestModel;
-    //LargeChestModel* largeChestModel;
+    ChestModel largeChestModel;
 };
 
 #endif /*NET_MINECRAFT_CLIENT_RENDERER_TILEENTITY__ChestRenderer_H__*/
