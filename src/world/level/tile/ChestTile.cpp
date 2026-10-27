@@ -194,15 +194,20 @@ int ChestTile::getTexture(
 		if (face == 4)
 			offs = -1 - offs;
 
-		int lockDir = 5;
+		int lockDir = level->getData(x, y, z);
 
+		// A north/south pair must face east or west.
+		if (lockDir != Facing::EAST && lockDir != Facing::WEST)
+			lockDir = Facing::EAST;
+
+		// If only one side is obstructed, face away from it.
 		if ((Tile::solid[w] || Tile::solid[w2])
 			&& !Tile::solid[e] && !Tile::solid[e2])
-			lockDir = 5;
+			lockDir = Facing::EAST;
 
 		if ((Tile::solid[e] || Tile::solid[e2])
 			&& !Tile::solid[w] && !Tile::solid[w2])
-			lockDir = 4;
+			lockDir = Facing::WEST;
 
 		return (face == lockDir ? tex + 16 : tex + 32)
 			+ offs;
@@ -225,15 +230,20 @@ int ChestTile::getTexture(
 		if (face == 3)
 			offs = -1 - offs;
 
-		int lockDir = 3;
+		int lockDir = level->getData(x, y, z);
 
+		// A west/east pair must face north or south.
+		if (lockDir != Facing::NORTH && lockDir != Facing::SOUTH)
+			lockDir = Facing::SOUTH;
+
+		// If only one side is obstructed, face away from it.
 		if ((Tile::solid[n] || Tile::solid[n2])
 			&& !Tile::solid[s] && !Tile::solid[s2])
-			lockDir = 3;
+			lockDir = Facing::SOUTH;
 
 		if ((Tile::solid[s] || Tile::solid[s2])
 			&& !Tile::solid[n] && !Tile::solid[n2])
-			lockDir = 2;
+			lockDir = Facing::NORTH;
 
 		return (face == lockDir ? tex + 16 : tex + 32)
 			+ offs;
