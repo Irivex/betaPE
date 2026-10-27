@@ -29,6 +29,30 @@ int ChestTile::getRenderShape()
 	//return Tile::SHAPE_ENTITYTILE_ANIMATED;
 }
 
+void ChestTile::updateShape(
+	LevelSource* level, int x, int y, int z)
+{
+	const float margin = 0.025f;
+
+	// Detect adjacent chests in every horizontal direction.
+	const bool west = level->getTile(x - 1, y, z) == id;
+	const bool east = level->getTile(x + 1, y, z) == id;
+	const bool north = level->getTile(x, y, z - 1) == id;
+	const bool south = level->getTile(x, y, z + 1) == id;
+
+	// Keep outer edges inset, but eliminate margins
+	// on sides that touch another chest.
+	const float x0 = west ? 0.0f : margin;
+	const float x1 = east ? 1.0f : 1.0f - margin;
+	const float z0 = north ? 0.0f : margin;
+	const float z1 = south ? 1.0f : 1.0f - margin;
+
+	Tile::setShape(
+		x0, 0.0f, z0,
+		x1, 1.0f - margin - margin, z1
+	);
+}
+
 void ChestTile::onPlace(Level* level, int x, int y, int z)
 {
 	super::onPlace(level, x, y, z);
@@ -53,87 +77,89 @@ void ChestTile::onPlace(Level* level, int x, int y, int z)
 	}
 }
 
-void ChestTile::setPlacedBy( Level* level, int x, int y, int z, Mob* by )
+void ChestTile::setPlacedBy(
+	Level* level, int x, int y, int z, Mob* by)
 {
-	int n = level->getTile(x, y, z - 1); // face = 2
-	int s = level->getTile(x, y, z + 1); // face = 3
-	int w = level->getTile(x - 1, y, z); // face = 4
-	int e = level->getTile(x + 1, y, z); // face = 5
+	// Calculate the normal chest facing from the player's rotation.
+	int dir = (Mth::floor(by->yRot * 4 / 360.0f + 0.5f)) & 3;
 
-	int facing = 0;
-	int dir = (Mth::floor(by->yRot * 4 / (360) + 0.5f)) & 3;
+	int facing = Facing::NORTH;
 
 	if (dir == 0) facing = Facing::NORTH;
 	if (dir == 1) facing = Facing::EAST;
 	if (dir == 2) facing = Facing::SOUTH;
 	if (dir == 3) facing = Facing::WEST;
 
-	if (n != id && s != id && w != id && e != id) {
-		level->setData(x, y, z, facing);
-	} else {
-		if ((n == id || s == id) && (facing == Facing::WEST || facing == Facing::EAST)) {
-			if (n == id) level->setData(x, y, z - 1, facing);
-			else level->setData(x, y, z + 1, facing);
-			level->setData(x, y, z, facing);
-		}
-		if ((w == id || e == id) && (facing == Facing::NORTH || facing == Facing::SOUTH)) {
-			if (w == id) level->setData(x - 1, y, z, facing);
-			else level->setData(x + 1, y, z, facing);
-			level->setData(x, y, z, facing);
+	// Find an existing chest to pair with.
+	int partnerX = x;
+	int partnerZ = z;
+
+	if (level->getTile(x, y, z - 1) == id) {
+		partnerZ = z - 1;
+	}
+	else if (level->getTile(x, y, z + 1) == id) {
+		partnerZ = z + 1;
+	}
+	else if (level->getTile(x - 1, y, z) == id) {
+		partnerX = x - 1;
+	}
+	else if (level->getTile(x + 1, y, z) == id) {
+		partnerX = x + 1;
+	}
+
+	const bool hasPartner =
+		partnerX != x || partnerZ != z;
+
+	if (hasPartner) {
+		// Preserve the existing chest's orientation.
+		const int partnerFacing =
+			level->getData(partnerX, y, partnerZ);
+
+		if (partnerFacing >= Facing::NORTH
+			&& partnerFacing <= Facing::EAST) {
+			facing = partnerFacing;
 		}
 	}
+
+	// Always assign valid facing metadata to the new chest.
+	level->setData(x, y, z, facing);
 }
 
-void ChestTile::recalcLockDir( Level* level, int x, int y, int z )
+void ChestTile::recalcLockDir(Level* level, int x, int y, int z)
 {
 	if (level->isClientSide)
 		return;
 
-	int n = level->getTile(x, y, z - 1); // face = 2
-	int s = level->getTile(x, y, z + 1); // face = 3
-	int w = level->getTile(x - 1, y, z); // face = 4
-	int e = level->getTile(x + 1, y, z); // face = 5
+	const int n = level->getTile(x, y, z - 1);
+	const int s = level->getTile(x, y, z + 1);
+	const int w = level->getTile(x - 1, y, z);
+	const int e = level->getTile(x + 1, y, z);
 
-	// Long!
-	//@fullchest
-	int lockDir = 4;
-	/*
-	if (n == id || s == id) {
-		int w2 = level->getTile(x - 1, y, n == id ? z - 1 : z + 1);
-		int e2 = level->getTile(x + 1, y, n == id ? z - 1 : z + 1);
+	int lockDir = level->getData(x, y, z);
 
-		lockDir = 5;
+	// A neighbouring chest is a valid partner, not an obstacle.
+	const bool solidNorth = n != id && Tile::solid[n];
+	const bool solidSouth = s != id && Tile::solid[s];
+	const bool solidWest = w != id && Tile::solid[w];
+	const bool solidEast = e != id && Tile::solid[e];
 
-		int otherDir = -1;
-		if (n == id) otherDir = level->getData(x, y, z - 1);
-		else otherDir = level->getData(x, y, z + 1);
-		if (otherDir == 4) lockDir = 4;
+	// Preserve existing behaviour around ordinary solid blocks.
+	if ((lockDir == Facing::NORTH && solidNorth)
+		|| (lockDir == Facing::SOUTH && solidSouth)
+		|| (lockDir == Facing::WEST && solidWest)
+		|| (lockDir == Facing::EAST && solidEast)) {
 
-		if ((Tile::solid[w] || Tile::solid[w2]) && !Tile::solid[e] && !Tile::solid[e2]) lockDir = 5;
-		if ((Tile::solid[e] || Tile::solid[e2]) && !Tile::solid[w] && !Tile::solid[w2]) lockDir = 4;
-	} else if (w == id || e == id) {
-		int n2 = level->getTile(w == id ? x - 1 : x + 1, y, z - 1);
-		int s2 = level->getTile(w == id ? x - 1 : x + 1, y, z + 1);
+		if (solidNorth && !solidSouth)
+			lockDir = Facing::SOUTH;
 
-		lockDir = 3;
-		int otherDir = -1;
-		if (w == id) otherDir = level->getData(x - 1, y, z);
-		else otherDir = level->getData(x + 1, y, z);
-		if (otherDir == 2) lockDir = 2;
+		if (solidSouth && !solidNorth)
+			lockDir = Facing::NORTH;
 
-		if ((Tile::solid[n] || Tile::solid[n2]) && !Tile::solid[s] && !Tile::solid[s2]) lockDir = 3;
-		if ((Tile::solid[s] || Tile::solid[s2]) && !Tile::solid[n] && !Tile::solid[n2]) lockDir = 2;
-	} else */ {
-		lockDir = level->getData(x, y, z);
-		if ((lockDir == Facing::NORTH && Tile::solid[n])
-		||  (lockDir == Facing::SOUTH && Tile::solid[s])
-		||  (lockDir == Facing::WEST  && Tile::solid[w])
-		||  (lockDir == Facing::EAST  && Tile::solid[e])) {
-			if (Tile::solid[n] && !Tile::solid[s]) lockDir = Facing::SOUTH;
-			if (Tile::solid[s] && !Tile::solid[n]) lockDir = Facing::NORTH;
-			if (Tile::solid[w] && !Tile::solid[e]) lockDir = Facing::EAST;
-			if (Tile::solid[e] && !Tile::solid[w]) lockDir = Facing::WEST;
-		}
+		if (solidWest && !solidEast)
+			lockDir = Facing::EAST;
+
+		if (solidEast && !solidWest)
+			lockDir = Facing::WEST;
 	}
 
 	level->setData(x, y, z, lockDir);
