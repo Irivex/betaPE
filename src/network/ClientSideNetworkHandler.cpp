@@ -270,7 +270,7 @@ void ClientSideNetworkHandler::handle(const RakNet::RakNetGUID& source, StartGam
 			false,
 			serverWorldWidth
 		),
-		SharedConstants::StorageVersion
+		packet->levelGeneratorVersion
 	);
 
 	// Log AFTER construction, because _init() may change the globals.
