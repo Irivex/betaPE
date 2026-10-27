@@ -266,6 +266,7 @@ void Inventory::setupDefault() {
 
 		addItem(new ItemInstance(Item::apple_gold));
 		addItem(new ItemInstance(Item::apple));
+		addItem(new ItemInstance(Item::cake));
 	} else {
 #if defined(WIN32)
 		// Survival

@@ -137,7 +137,7 @@ Item* Item::seeds_melon = NULL;
 Item* Item::dye_powder = NULL;
 Item* Item::bone = NULL;
 Item* Item::sugar = NULL;
-//Item* Item::cake = NULL;
+Item* Item::cake = NULL;
 
 Item* Item::bed = NULL;
 
@@ -287,7 +287,7 @@ void Item::initItems() {
 	Item::dye_powder = (new DyePowderItem(95))->setIcon(14, 4)->setCategory(ItemCategory::Decorations)->setDescriptionId("dyePowder");
 	Item::bone = (new Item(96))->setIcon(12, 1)->setCategory(ItemCategory::Tools)->setDescriptionId("bone")->handEquipped();
 	Item::sugar = (new Item(97))->setIcon(13, 0)->setCategory(ItemCategory::FoodArmor)->setDescriptionId("sugar")->handEquipped();
-	//Item::cake = (new TilePlanterItem(98, Tile::cake))->setMaxStackSize(1)->setIcon(13, 1)->setCategory(ItemCategory::FoodArmor)->setDescriptionId("cake");
+	Item::cake = (new TilePlanterItem(98, Tile::cake))->setMaxStackSize(1)->setIcon(13, 1)->setCategory(ItemCategory::FoodArmor)->setDescriptionId("cake");
 	Item::bed = (new BedItem(99))->setMaxStackSize(1)->setIcon(13, 2)->setCategory(ItemCategory::Structures)->setDescriptionId("bed");
 	//Item::diode = (new TilePlanterItem(100, Tile::diode_off))->setIcon(6, 5)->setCategory(ItemCategory::Mechanisms)->setDescriptionId("diode");
 	Item::shears = (ShearsItem*)(new ShearsItem(103))->setIcon(13, 5)->setCategory(ItemCategory::Tools)->setDescriptionId("shears");

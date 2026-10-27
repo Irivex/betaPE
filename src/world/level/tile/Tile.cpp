@@ -1,5 +1,6 @@
 #include "TileInclude.h"
 #include "../Level.h"
+#include "../../Facing.h"
 #include "../../entity/player/Player.h"
 #include "../../entity/item/ItemEntity.h"
 #include "../../item/Item.h"
@@ -120,6 +121,7 @@ Tile* Tile::furnace     = NULL;
 Tile* Tile::furnace_lit = NULL;
 Tile* Tile::chest		= NULL;
 Tile* Tile::lightGem    = NULL;
+Tile* Tile::cake = NULL;
 Tile* Tile::stairs_wood = NULL;
 Tile* Tile::stairs_stone= NULL;
 Tile* Tile::stairs_brick= NULL;
@@ -156,6 +158,142 @@ Tile* Tile::stairs_netherBricks   = NULL;
 Tile* Tile::stairs_sandStone   = NULL;
 Tile* Tile::quartzBlock   = NULL;
 Tile* Tile::stairs_quartz   = NULL;
+
+// Cake block: six edible slices.
+CakeTile::CakeTile(int id)
+	: super(id, 122, Material::cake)
+{
+	setShape();
+}
+
+void CakeTile::setShape()
+{
+	// A whole cake is 14/16 wide and 8/16 tall.
+	Tile::setShape(
+		1.0f / 16.0f, 0.0f, 1.0f / 16.0f,
+		15.0f / 16.0f, 0.5f, 15.0f / 16.0f
+	);
+}
+
+void CakeTile::updateShape(LevelSource* level, int x, int y, int z)
+{
+	// Every bite removes 2/16 of the cake from one side.
+	int bites = level->getData(x, y, z);
+
+	if (bites < 0) bites = 0;
+	if (bites > 5) bites = 5;
+
+	const float x0 = (1.0f + 2.0f * bites) / 16.0f;
+
+	Tile::setShape(
+		x0, 0.0f, 1.0f / 16.0f,
+		15.0f / 16.0f, 0.5f, 15.0f / 16.0f
+	);
+}
+
+int CakeTile::getTexture(int face)
+{
+	return getTexture(face, 0);
+}
+
+int CakeTile::getTexture(int face, int data)
+{
+	// Cake underside.
+	if (face == Facing::DOWN) {
+		return 124;
+	}
+
+	// Cake top frosting.
+	if (face == Facing::UP) {
+		return 121;
+	}
+
+	// Exposed cake interior after eating a slice.
+	if (face == Facing::WEST && data > 0) {
+		return 123;
+	}
+
+	// Normal cake sides.
+	return 122;
+}
+
+int CakeTile::getRenderShape()
+{
+	return SHAPE_BLOCK;
+}
+
+bool CakeTile::isCubeShaped()
+{
+	return false;
+}
+
+bool CakeTile::isSolidRender()
+{
+	return false;
+}
+
+bool CakeTile::mayPlace(Level* level, int x, int y, int z)
+{
+	// Cake needs a suitable supporting block underneath.
+	return super::mayPlace(level, x, y, z)
+		&& canSurvive(level, x, y, z);
+}
+
+bool CakeTile::canSurvive(Level* level, int x, int y, int z)
+{
+	return level->isSolidBlockingTile(x, y - 1, z);
+}
+
+void CakeTile::neighborChanged(
+	Level* level, int x, int y, int z, int type)
+{
+	// Remove the cake if its supporting block disappears.
+	if (!canSurvive(level, x, y, z)) {
+		level->setTile(x, y, z, 0);
+	}
+}
+
+bool CakeTile::use(Level* level, int x, int y, int z, Player* player)
+{
+	// The server handles the actual bite and synchronizes the block.
+	// Returning true also prevents the held item from being used on the cake.
+	if (level->isClientSide) {
+		return true;
+	}
+
+	// Match the existing FoodItem behaviour: food is consumed when hurt.
+	if (player->abilities.invulnerable || !player->isHurt()) {
+		return true;
+	}
+
+	const int bites = level->getData(x, y, z);
+
+	// The existing language text says each slice restores 1.5 hearts.
+	player->foodData.eat(3);
+
+	if (bites >= 5) {
+		// The sixth bite removes the cake entirely.
+		level->setTile(x, y, z, 0);
+	}
+	else {
+		// Store the number of slices already eaten in block metadata.
+		level->setData(x, y, z, bites + 1);
+	}
+
+	level->playSound(
+		player,
+		"random.eat",
+		0.5f,
+		level->random.nextFloat() * 0.1f + 0.9f
+	);
+
+	return true;
+}
+
+int CakeTile::getResource(int data, Random* random)
+{
+	return 0;
+}
 
 /*static*/
 void Tile::initTiles() {
@@ -237,6 +375,14 @@ void Tile::initTiles() {
 	//hellSand = (new HellSandTile(88, 8 + 6 * 16, Material::sand))->init()->setDestroyTime(0.5f)->setSoundType(SOUND_SAND)->setDescriptionId("hellsand");
 
 	lightGem	= (new LightGemTile(89, 9 + 16 * 6, Material::glass))->init()->setDestroyTime(0.3f)->setCategory(ItemCategory::Structures)->setSoundType(SOUND_GLASS)->setLightEmission(1.0f)->setDescriptionId("lightgem");
+	cake = (new CakeTile(92))->init()
+		->setDestroyTime(0.5f)
+		->setSoundType(SOUND_CLOTH)
+		->setCategory(ItemCategory::FoodArmor)
+		->setDescriptionId("cake");
+
+	// Tile::init() resets the default bounds, so restore the cake's smaller shape.
+	((CakeTile*)cake)->setShape();
 	invisible_bedrock = (new InvisibleTile(95, 0, Material::stone))->init()->setDestroyTime(-1)->setExplodeable(6000000);//->setSoundType(SOUND_SILENT);
 	trapdoor = (new TrapDoorTile(96, Material::wood))->init()->setDestroyTime(3.0f)->setSoundType(SOUND_WOOD)->setCategory(ItemCategory::Structures)->setDescriptionId("trapdoor");//->sendTileData();
 

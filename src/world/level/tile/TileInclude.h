@@ -7,6 +7,7 @@
 #include "BookshelfTile.h"
 #include "Bush.h"
 #include "CactusTile.h"
+#include "CakeTile.h"
 #include "CarriedTile.h"
 #include "ClayTile.h"
 #include "ChestTile.h"

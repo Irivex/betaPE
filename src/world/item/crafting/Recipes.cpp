@@ -177,14 +177,14 @@ Recipes::Recipes()
 
 		definition('#', Tile::wood, 'X', Item::stick));
 
-	//addShapedRecipe(ItemInstance(Item::cake, 1), //
-	//	"AAA", //
-	//	"BEB", //
-	//	"CCC", //
+	addShapedRecipe(ItemInstance(Item::cake, 1), //
+		"AAA", //
+		"BEB", //
+		"CCC", //
 
-	//	definition(	'A', Item::milk,//
-	//				'B', Item::sugar,//
-	//				'C', Item::wheat, 'E', Item::egg));
+		definition(	'A', Item::milk,
+					'B', Item::sugar,
+					'C', Item::wheat, 'E', Item::egg));
 
 	addShapedRecipe(ItemInstance(Item::sugar, 1), //
 		"#", //
