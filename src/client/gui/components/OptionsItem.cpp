@@ -2,6 +2,7 @@
 #include "../../Minecraft.h"
 #include "../../../locale/I18n.h"
 #include "../../../util/Mth.h"
+#include "../../../world/Difficulty.h"
 OptionsItem::OptionsItem( OptionId optionId, std::string label, GuiElement* element )
 : GuiElementContainer(false, true, 0, 0, 24, 12),
   m_optionId(optionId),
@@ -22,6 +23,35 @@ void OptionsItem::setupPositions() {
 void OptionsItem::render( Minecraft* minecraft, int xm, int ym ) {
 	int yOffset = (height - 8) / 2;
 	std::string text = m_label;
+
+	if (m_optionId == OPTIONS_DIFFICULTY) {
+		std::string difficultyText;
+
+		switch (minecraft->options.getIntValue(OPTIONS_DIFFICULTY)) {
+		case Difficulty::PEACEFUL:
+			difficultyText = "Peaceful";
+			break;
+
+		case Difficulty::EASY:
+			difficultyText = "Easy";
+			break;
+
+		case Difficulty::NORMAL:
+			difficultyText = "Normal";
+			break;
+
+		case Difficulty::HARD:
+			difficultyText = "Hard";
+			break;
+
+		default:
+			difficultyText = "Normal";
+			break;
+		}
+
+		text += ": " + difficultyText;
+	}
+
 	if (m_optionId == OPTIONS_GUI_SCALE) {
 		int value = minecraft->options.getIntValue(OPTIONS_GUI_SCALE);
 		std::string scaleText;

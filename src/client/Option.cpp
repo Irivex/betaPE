@@ -30,12 +30,18 @@ bool OptionFloat::parse(const std::string& value) {
 }
 bool OptionInt::parse(const std::string& value) {
     bool b;
+
     if (parse_bool_like(value, b)) {
-        m_value = b ? 1 : 0;
+        set(b ? 1 : 0);
         return true;
     }
 
-    return sscanf(value.c_str(), "%d", &m_value) == 1;
+    int parsed;
+    if (sscanf(value.c_str(), "%d", &parsed) != 1)
+        return false;
+
+    set(parsed);
+    return true;
 }
 bool OptionBool::parse(const std::string& value) {
     if (value == "0") {

@@ -69,8 +69,38 @@ SliderInt::SliderInt(Minecraft* minecraft, OptionId option)
 	m_percentage = float(m_option->get() - m_option->getMin()) / (m_numSteps-1);
 }
 
-void SliderInt::render( Minecraft* minecraft, int xm, int ym ) {
+void SliderInt::render(Minecraft* minecraft, int xm, int ym) {
 	Slider::render(minecraft, xm, ym);
+
+	if (m_optId != OPTIONS_DIFFICULTY || m_numSteps != 4)
+		return;
+
+	static const char* labels[] = {
+		"Peaceful",
+		"Easy",
+		"Normal",
+		"Hard"
+	};
+
+	const int sliderStart = x + 5;
+	const int barWidth = width - 10;
+	const int stepDistance = barWidth / (m_numSteps - 1);
+
+	for (int i = 0; i < m_numSteps; ++i) {
+		std::string label = labels[i];
+
+		int labelX =
+			sliderStart + i * stepDistance + 1
+			- minecraft->font->width(label) / 2;
+
+		minecraft->font->draw(
+			label,
+			(float)labelX,
+			(float)(y + 20),
+			0xffcccccc,
+			false
+		);
+	}
 }
 
 void SliderInt::mouseReleased( Minecraft* minecraft, int x, int y, int buttonNum ) {

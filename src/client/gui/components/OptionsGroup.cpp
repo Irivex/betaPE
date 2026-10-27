@@ -186,11 +186,21 @@ void OptionsGroup::createProgressSlider(OptionId optId, Minecraft* minecraft ) {
 	setupPositions();
 }
 
-void OptionsGroup::createStepSlider(OptionId optId, Minecraft* minecraft ) {
+void OptionsGroup::createStepSlider(OptionId optId, Minecraft* minecraft) {
 	Slider* element = new SliderInt(minecraft, optId);
-	element->width = 100;
-	element->height = 20;
-	std::string itemLabel = I18n::get(minecraft->options.getOpt(optId)->getStringId());
+
+	if (optId == OPTIONS_DIFFICULTY) {
+		element->width = 180;
+		element->height = 30;
+	}
+	else {
+		element->width = 100;
+		element->height = 20;
+	}
+
+	std::string itemLabel =
+		I18n::get(minecraft->options.getOpt(optId)->getStringId());
+
 	OptionsItem* item = new OptionsItem(optId, itemLabel, element);
 	addChild(item);
 	setupPositions();

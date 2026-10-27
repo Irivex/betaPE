@@ -11,7 +11,12 @@ bool Options::debugGl = false;
 
 // OPTIONS TABLE
 
-OptionInt difficulty("difficulty", Difficulty::NORMAL, 0, Difficulty::COUNT);
+OptionInt difficulty(
+	"difficulty",
+	Difficulty::NORMAL,
+	Difficulty::PEACEFUL,
+	Difficulty::COUNT - 1
+);
 OptionBool hidegui("hidegui", false);
 OptionBool thirdPersonView("thirdperson", false);
 OptionBool renderDebug("renderDebug", false);

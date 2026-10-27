@@ -1,4 +1,6 @@
 #include "MobSpawner.h"
+#include "LevelConstants.h"
+#include "../Difficulty.h"
 
 #include <algorithm>
 
@@ -57,8 +59,17 @@ int MobSpawner::tick(Level* level, bool spawnEnemies, bool spawnFriendlies) {
 			for (int z = -r; z <= r; z++) {
 				const int cx = xx + x;
 				const int cz = zz + z;
-				if (cx >= 0 && cx < 16 && cz >= 0 && cz < 16)
-					chunksToPoll.insert(std::make_pair(ChunkPos(cx, cz), false ));
+
+                const int chunkWidth =
+                    LevelConstants::LEVEL_WIDTH / LevelConstants::CHUNK_WIDTH;
+
+                const int chunkDepth =
+                    LevelConstants::LEVEL_DEPTH / LevelConstants::CHUNK_DEPTH;
+
+                if (cx >= 0 && cx < chunkWidth
+                    && cz >= 0 && cz < chunkDepth) {
+                    chunksToPoll.insert(std::make_pair(ChunkPos(cx, cz), false));
+                }
 			}
 		}
 	}
@@ -72,9 +83,40 @@ int MobSpawner::tick(Level* level, bool spawnEnemies, bool spawnFriendlies) {
         if ((mobCategory.isFriendly() && !spawnFriendlies) || (!mobCategory.isFriendly() && !spawnEnemies))
             continue;
 
-		int numMobs = level->countInstanceOfBaseType(mobCategory.getBaseClassId());
-		if (numMobs > mobCategory.getMaxInstancesPerLevel())
-		    continue;
+        const bool isMonsterCategory =
+            (&mobCategory == &MobCategory::monster);
+
+        int maxInstances = mobCategory.getMaxInstancesPerLevel();
+
+        if (&mobCategory == &MobCategory::monster) {
+            switch (level->difficulty) {
+            case Difficulty::PEACEFUL:
+                maxInstances = 0;
+                break;
+
+            case Difficulty::EASY:
+                maxInstances = 15;
+                break;
+
+            case Difficulty::NORMAL:
+                maxInstances = 25;
+                break;
+
+            case Difficulty::HARD:
+                maxInstances = 35;
+                break;
+
+            default:
+                maxInstances = 25;
+                break;
+            }
+        }
+
+        int numMobs =
+            level->countInstanceOfBaseType(mobCategory.getBaseClassId());
+
+        if (numMobs >= maxInstances)
+            continue;
 		//LOGI("NumMobs: %d of Category: %d\n", numMobs, mobCategory.getBaseClassId());
 chunkLoop:
 		for(std::map<ChunkPos, bool>::iterator it = chunksToPoll.begin(); it != chunksToPoll.end(); ++it) {
@@ -137,7 +179,11 @@ chunkLoop:
 							// probability weight.
 							if (&mobCategory == &MobCategory::monster) {
 								int typeCount = level->countInstanceOfType(currentMobType.mobClassId);
-								int typeMax = (int)(1.5f * currentMobType.randomWeight * mobCategory.getMaxInstancesPerLevel()) / Biome::defaultTotalEnemyWeight;
+                                int typeMax = (int)(
+                                    1.5f
+                                    * currentMobType.randomWeight
+                                    * maxInstances
+                                    ) / Biome::defaultTotalEnemyWeight;
 								//LOGI("Has %d (max %d) of type: %d\n", typeCount, typeMax, currentMobType.mobClassId);
 								if (typeCount >= typeMax)
 									break;
@@ -155,12 +201,18 @@ chunkLoop:
 						Mob* mob = MobFactory::CreateMob(currentMobType.mobClassId, level);
 						if (!mob) continue;
 
-						if (addMob(level, mob, xx, yy, zz, level->random.nextFloat() * 360, 0, false)) {
-							++currentCreatureCount;
-							if (++clusterSize >= mob->getMaxSpawnClusterSize()) goto chunkLoop;
-						}
-						else
-							delete mob;
+                        if (addMob(level, mob, xx, yy, zz,
+                            level->random.nextFloat() * 360, 0, false)) {
+
+                            ++currentCreatureCount;
+                            ++numMobs;
+
+                            if (++clusterSize >= mob->getMaxSpawnClusterSize())
+                                goto chunkLoop;
+                        }
+                        else {
+                            delete mob;
+                        }
 
                         count += clusterSize;
                     }
